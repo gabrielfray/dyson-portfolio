@@ -265,9 +265,15 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   aura.scale.setScalar(SUN_R * 13);
   scene.add(aura);
 
-  const sunLight = new THREE.PointLight(0xffa640, 2400, 0, 2);
+  // luz do sol quase branca (leve calor): mantém o sol dourado sem tingir de
+  // laranja os painéis/anéis metálicos, que devem ler como prata/azul-aço
+  const sunLight = new THREE.PointLight(0xfff4ea, 2400, 0, 2);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0c1219, 2.4));
+  // fill frio para reforçar o tom prateado/azulado da estrutura
+  scene.add(new THREE.AmbientLight(0x1a2836, 2.6));
+  const coolFill = new THREE.DirectionalLight(0x9fc4ff, 0.5);
+  coolFill.position.set(-1, 0.6, 0.8);
+  scene.add(coolFill);
 
   const dyson = new THREE.Group();
   scene.add(dyson);
@@ -338,7 +344,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   function makeRing(cfg: RingConfig) {
     const { radius, width, segments, gapChance, tilt, rotZ, speed } = cfg;
-    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xcfdbe4, roughness: 0.22, metalness: 0.65, side: THREE.DoubleSide, emissive: 0xff9a3c, emissiveIntensity: 0.14 });
+    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xcfdbe4, roughness: 0.22, metalness: 0.65, side: THREE.DoubleSide, emissive: 0xff9a3c, emissiveIntensity: 0.06 });
     const windowMat = new THREE.MeshStandardMaterial({ color: 0x22303a, roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide });
     const group = new THREE.Group();
     const arc = (Math.PI * 2) / segments;
@@ -420,7 +426,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (hovered >= 0 && hovered !== lockedIdx) {
       const m = ud(rings[hovered]).mat;
       m.emissive.setHex(0xff9a3c);
-      m.emissiveIntensity = 0.14;
+      m.emissiveIntensity = 0.06;
       ud(rings[hovered]).speed = ud(rings[hovered]).baseSpeed;
     }
     hovered = i;
