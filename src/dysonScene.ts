@@ -489,10 +489,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   const clock = new THREE.Clock();
   let sx = 0, sy = 0;
+  let camTheta = 0, lastT = 0;
   let rafId = 0;
   function animate() {
     rafId = requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
+    const dt = Math.min(t - lastT, 0.05); // clamp evita salto ao voltar de aba inativa
+    lastT = t;
     starUniforms.uTime.value = t;
     (glow.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
@@ -506,9 +509,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     sx += (mouseX - sx) * 0.04;
     sy += (mouseY - sy) * 0.04;
     swoop *= 0.94;
-    focus += (targetFocus - focus) * 0.07;
-    const theta = t * 0.05 * (1 - focus * 0.75) + sx * 0.35;
-    const radius = 66 + scrollP * 90 - swoop * 12 - focus * 9 + userZoom * (1 - focus);
+    focus += (targetFocus - focus) * 0.06;
+    // ângulo acumulado: mudar o foco altera a VELOCIDADE de rotação, não o ângulo
+    // absoluto — evita o giro brusco ao abrir/fechar um painel. Quase para no foco.
+    camTheta += dt * 0.05 * (1 - focus * 0.85);
+    const theta = camTheta + sx * 0.35;
+    // ao focar, afasta a câmera para enquadrar a esfera inteira ao lado do painel
+    const radius = 66 + scrollP * 90 + focus * 32 - swoop * 4 + userZoom * (1 - focus);
     const phi = 1.35 + sy * 0.2;
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
