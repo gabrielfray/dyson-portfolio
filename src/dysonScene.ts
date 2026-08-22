@@ -514,8 +514,9 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     // absoluto — evita o giro brusco ao abrir/fechar um painel. Quase para no foco.
     camTheta += dt * 0.05 * (1 - focus * 0.85);
     const theta = camTheta + sx * 0.35;
-    // ao focar, afasta a câmera para enquadrar a esfera inteira ao lado do painel
-    const radius = 66 + scrollP * 90 + focus * 32 - swoop * 4 + userZoom * (1 - focus);
+    // posição inicial afastada: enquadra a esfera inteira com folga. Ao focar,
+    // um pequeno empurrão extra dá margem ao lado do painel aberto.
+    const radius = 105 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus);
     const phi = 1.35 + sy * 0.2;
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
