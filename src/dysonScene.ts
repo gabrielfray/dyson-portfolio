@@ -37,12 +37,19 @@ interface RingConfig {
 }
 
 export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions = {}): DysonSceneApi {
+  // O artefato original foi feito com three r147: color management desligado e
+  // saída linear (outputEncoding = LinearEncoding). A partir da r152 o color
+  // management vem ligado com saída sRGB por padrão, o que "lava" as cores e
+  // muda o âmbar/dourado. Replicamos o pipeline da r147 para bater com o design.
+  THREE.ColorManagement.enabled = false;
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 2000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   container.appendChild(renderer.domElement);
