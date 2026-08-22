@@ -575,18 +575,26 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (key === 'jupiter') return makeBandTexture(0xe8dcc0, 0x9c7850);
     if (key === 'saturno') return makeBandTexture(0xe0d2a0, 0xb09860);
     if (key === 'mercurio') {
-      return makeSurface(0x7d746a, (ctx, w, h) => {
-        for (let i = 0; i < 44; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(30, 95), Math.random() < 0.5 ? 0x645c53 : 0x928779, rnd(0.15, 0.35)); // manchas regionais
-        for (let i = 0; i < 130; i++) { // crateras: sombra + rebordo claro
-          const x = rnd(0, w), y = rnd(0, h), rr = rnd(2, 9);
-          splat(ctx, w, x, y, rr * 1.4, 0x50493f, rnd(0.3, 0.6));
-          splat(ctx, w, x - rr * 0.3, y - rr * 0.3, rr * 0.7, 0x9c9184, rnd(0.2, 0.45));
+      return makeSurface(0x847a6f, (ctx, w, h) => {
+        for (let i = 0; i < 30; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(45, 115), Math.random() < 0.5 ? 0x453f37 : 0xa99e8f, rnd(0.3, 0.55)); // maria claras/escuras
+        for (let i = 0; i < 190; i++) { // crateras: cova escura + rebordo claro (alto contraste)
+          const x = rnd(0, w), y = rnd(0, h), rr = rnd(2, 12);
+          splat(ctx, w, x, y, rr * 1.5, 0x352f28, rnd(0.45, 0.8));
+          splat(ctx, w, x - rr * 0.35, y - rr * 0.35, rr * 0.8, 0xcabda8, rnd(0.35, 0.6));
         }
+        for (let i = 0; i < 420; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(1, 3), Math.random() < 0.5 ? 0x2c2822 : 0xb4a794, rnd(0.2, 0.4)); // speckle fino
       });
     }
     if (key === 'venus') {
-      return makeSurface(0xe9ddb6, (ctx, w, h) => {
-        for (let i = 0; i < 70; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(40, 120), Math.random() < 0.5 ? 0xf5efd2 : 0xd6c495, rnd(0.12, 0.28)); // redemoinhos de nuvens
+      return makeSurface(0xe4d3a0, (ctx, w, h) => {
+        for (let y = 0; y < h; y++) { // bandas latitudinais de nuvens (mais contraste)
+          const t = 0.5 + 0.5 * Math.sin(y / h * Math.PI * 9 + Math.sin(y / h * 5) * 1.5);
+          const c = new THREE.Color(0xb2913f).lerp(new THREE.Color(0xf9f1cf), t);
+          ctx.fillStyle = `rgba(${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0},0.7)`;
+          ctx.fillRect(0, y, w, 1);
+        }
+        for (let i = 0; i < 110; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(35, 120), Math.random() < 0.5 ? 0xfcf6da : 0xb2934f, rnd(0.28, 0.5)); // redemoinhos em "V"
+        for (let i = 0; i < 260; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(3, 13), Math.random() < 0.5 ? 0xfef9de : 0xa88e4c, rnd(0.18, 0.36)); // textura fina de nuvem
       });
     }
     if (key === 'terra') {
@@ -604,12 +612,19 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       });
     }
     if (key === 'marte') {
-      return makeSurface(0xa77c4e, (ctx, w, h) => {
-        for (let i = 0; i < 55; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(28, 92), Math.random() < 0.5 ? 0x6d5030 : 0xc59b68, rnd(0.2, 0.45)); // regiões de albedo
-        for (let i = 0; i < 9; i++) { // calotas polares
-          splat(ctx, w, rnd(0, w), rnd(0, h * 0.1), rnd(26, 56), 0xf3eee7, rnd(0.4, 0.7));
-          splat(ctx, w, rnd(0, w), rnd(h * 0.9, h), rnd(26, 56), 0xf3eee7, rnd(0.4, 0.7));
+      return makeSurface(0xb07c48, (ctx, w, h) => {
+        for (let i = 0; i < 30; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(45, 125), 0x5a3d22, rnd(0.35, 0.6)); // regiões escuras (maria)
+        for (let i = 0; i < 28; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(35, 95), 0xd3ac78, rnd(0.28, 0.5)); // desertos claros
+        for (let i = 0; i < 130; i++) { // crateras/manchas
+          const x = rnd(0, w), y = rnd(0, h), rr = rnd(2, 8);
+          splat(ctx, w, x, y, rr * 1.3, 0x53381f, rnd(0.3, 0.55));
+          splat(ctx, w, x - rr * 0.3, y - rr * 0.3, rr * 0.6, 0xdcb587, rnd(0.25, 0.45));
         }
+        for (let i = 0; i < 12; i++) { // calotas polares (mais fortes)
+          splat(ctx, w, rnd(0, w), rnd(0, h * 0.09), rnd(30, 62), 0xf7f3ed, rnd(0.5, 0.82));
+          splat(ctx, w, rnd(0, w), rnd(h * 0.91, h), rnd(30, 62), 0xf7f3ed, rnd(0.5, 0.82));
+        }
+        for (let i = 0; i < 320; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(1, 3), Math.random() < 0.5 ? 0x472e17 : 0xdcb587, rnd(0.2, 0.38)); // speckle fino
       });
     }
     return null;
