@@ -541,21 +541,93 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     }
     return new THREE.CanvasTexture(cv);
   };
+  // Superfícies procedurais (equirretangular 512x256) p/ os rochosos. A cor vai
+  // na textura (uColor = branco). Blobs em gradiente radial, com wrap horizontal
+  // p/ evitar emenda na longitude.
+  const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+  const splat = (ctx: CanvasRenderingContext2D, w: number, x: number, y: number, rad: number, col: number, a: number) => {
+    const c = new THREE.Color(col);
+    const rgb = `${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0}`;
+    for (const dx of [0, -w, w]) {
+      const g = ctx.createRadialGradient(x + dx, y, 0, x + dx, y, rad);
+      g.addColorStop(0, `rgba(${rgb},${a})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x + dx - rad, y - rad, rad * 2, rad * 2);
+    }
+  };
+  const makeSurface = (base: number, build: (ctx: CanvasRenderingContext2D, w: number, h: number) => void) => {
+    const w = 512, h = 256;
+    const cv = document.createElement('canvas');
+    cv.width = w;
+    cv.height = h;
+    const ctx = cv.getContext('2d')!;
+    const b = new THREE.Color(base);
+    ctx.fillStyle = `rgb(${(b.r * 255) | 0},${(b.g * 255) | 0},${(b.b * 255) | 0})`;
+    ctx.fillRect(0, 0, w, h);
+    build(ctx, w, h);
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  };
+  const planetTexture = (key: string) => {
+    if (key === 'jupiter') return makeBandTexture(0xe8dcc0, 0x9c7850);
+    if (key === 'saturno') return makeBandTexture(0xe0d2a0, 0xb09860);
+    if (key === 'mercurio') {
+      return makeSurface(0x7d746a, (ctx, w, h) => {
+        for (let i = 0; i < 44; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(30, 95), Math.random() < 0.5 ? 0x645c53 : 0x928779, rnd(0.15, 0.35)); // manchas regionais
+        for (let i = 0; i < 130; i++) { // crateras: sombra + rebordo claro
+          const x = rnd(0, w), y = rnd(0, h), rr = rnd(2, 9);
+          splat(ctx, w, x, y, rr * 1.4, 0x50493f, rnd(0.3, 0.6));
+          splat(ctx, w, x - rr * 0.3, y - rr * 0.3, rr * 0.7, 0x9c9184, rnd(0.2, 0.45));
+        }
+      });
+    }
+    if (key === 'venus') {
+      return makeSurface(0xe9ddb6, (ctx, w, h) => {
+        for (let i = 0; i < 70; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(40, 120), Math.random() < 0.5 ? 0xf5efd2 : 0xd6c495, rnd(0.12, 0.28)); // redemoinhos de nuvens
+      });
+    }
+    if (key === 'terra') {
+      return makeSurface(0x24507e, (ctx, w, h) => { // oceano
+        const land = [0x4f6b3a, 0x6f7a45, 0x8a7550];
+        for (let cc = 0; cc < 7; cc++) { // continentes
+          const cx = rnd(0, w), cy = rnd(h * 0.22, h * 0.78);
+          for (let i = 0; i < 26; i++) splat(ctx, w, cx + rnd(-65, 65), cy + rnd(-42, 42), rnd(10, 34), land[(Math.random() * land.length) | 0], rnd(0.55, 0.95));
+        }
+        for (let i = 0; i < 12; i++) { // calotas polares
+          splat(ctx, w, rnd(0, w), rnd(0, h * 0.12), rnd(24, 54), 0xeef4ff, rnd(0.35, 0.65));
+          splat(ctx, w, rnd(0, w), rnd(h * 0.88, h), rnd(24, 54), 0xeef4ff, rnd(0.35, 0.65));
+        }
+        for (let i = 0; i < 42; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(14, 44), 0xffffff, rnd(0.1, 0.28)); // nuvens
+      });
+    }
+    if (key === 'marte') {
+      return makeSurface(0xa77c4e, (ctx, w, h) => {
+        for (let i = 0; i < 55; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(28, 92), Math.random() < 0.5 ? 0x6d5030 : 0xc59b68, rnd(0.2, 0.45)); // regiões de albedo
+        for (let i = 0; i < 9; i++) { // calotas polares
+          splat(ctx, w, rnd(0, w), rnd(0, h * 0.1), rnd(26, 56), 0xf3eee7, rnd(0.4, 0.7));
+          splat(ctx, w, rnd(0, w), rnd(h * 0.9, h), rnd(26, 56), 0xf3eee7, rnd(0.4, 0.7));
+        }
+      });
+    }
+    return null;
+  };
   PLANETS.forEach((p, i) => {
     const norm = (Math.log10(p.au) - logMin) / (logMax - logMin);
     const r = ORBIT_INNER + (ORBIT_OUTER - ORBIT_INNER) * norm;
     const size = p.bodyPx * BODY_SCALE * PX_TO_WORLD;
-    // gigantes gasosos ganham faixas (canvas); a cor vai na textura e uColor = branco
-    const bandTex = p.key === 'jupiter' ? makeBandTexture(0xe8dcc0, 0x9c7850)
-      : p.key === 'saturno' ? makeBandTexture(0xe0d2a0, 0xb09860)
-        : null;
+    // textura de superfície (rochosos) ou faixas (gigantes): cor vai na textura,
+    // uColor = branco. Urano/Netuno seguem cor sólida (uMap branco 1x1).
+    const surfTex = planetTexture(p.key);
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(bandTex ? 0xffffff : p.color) },
+        uColor: { value: new THREE.Color(surfTex ? 0xffffff : p.color) },
         uShin: { value: THREE.MathUtils.lerp(6, 90, 1 - p.rough) }, // menos rugoso -> glint concentrado
         uSpec: { value: 0.22 + p.metal * 0.9 },
         uAmbient: { value: 0.08 }, // piso p/ o lado escuro não sumir
-        uMap: { value: bandTex ?? whiteTex },
+        uMap: { value: surfTex ?? whiteTex },
       },
       vertexShader: PLANET_VERT,
       fragmentShader: PLANET_FRAG,
