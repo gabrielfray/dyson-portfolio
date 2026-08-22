@@ -1,32 +1,53 @@
-# React + TypeScript + Vite
+# Dyson Portfolio — Gabriel Fray
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Portfólio pessoal interativo em forma de **Esfera de Dyson**: um sol de plasma
+procedural, sete anéis orbitais e um campo estelar renderizados em tempo real com
+WebGL. Cada anel funciona como um portal de navegação para uma seção do portfólio.
 
-Currently, two official plugins are available:
+Reconstrução em **React + TypeScript + Vite** do artefato original (que usava um
+runtime de componentes customizado). Toda a cena 3D foi portada para um módulo
+TypeScript com `three.js`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- **React 19** + **TypeScript**
+- **Vite 8** (build/dev)
+- **three.js** — cena 3D, shaders GLSL (simplex noise / fbm no sol) e
+  `EffectComposer` + `UnrealBloomPass` para o bloom
+- **@fontsource** — IBM Plex Mono e Space Grotesk
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Funcionalidades
 
-## Expanding the Oxlint configuration
+- Sol procedural animado (plasma via ruído simplex + fbm) com corona e aura
+- 7 anéis orbitais em `InstancedMesh`, cada um com velocidade/inclinação própria
+- Campo estelar em 3 camadas (incluindo uma "via láctea") com cintilação por shader
+- Anéis interativos: hover destaca o anel e acende o emissivo; clique abre o painel
+- Parallax de mouse, zoom por scroll e câmera com foco animado ao abrir uma seção
+- Console datilografado (efeito de terminal) com loop
+- Bilíngue **PT / EN** (alternável no botão superior esquerdo)
+- Painel lateral com as seções: Sobre, Projetos, Experiência, Stack, Serviços, Contato
+- `Esc` fecha o painel
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Como rodar
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # servidor de desenvolvimento (http://localhost:5173)
+npm run build    # build de produção em dist/
+npm run preview  # pré-visualiza o build
+npm run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+> Requer Node.js 20.19+ ou 22.12+ (exigência do Vite 8).
+
+## Estrutura
+
+```
+src/
+  main.tsx        # entrada — importa fontes e monta o App
+  App.tsx         # UI: terminal, legenda, painel de seções, i18n
+  dysonScene.ts   # cena three.js (sol, anéis, estrelas, bloom, interação)
+  content.ts      # conteúdo bilíngue (seções, projetos, experiência, stack…)
+  useTerminal.ts  # hook do efeito de console datilografado
+  index.css       # estilos globais e keyframes
+```
