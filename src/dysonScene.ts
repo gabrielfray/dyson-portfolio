@@ -151,7 +151,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   const SUN_R = 6;
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(13, 64, 64),
+    new THREE.SphereGeometry(10, 64, 64),
     new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -215,51 +215,110 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
           float n2 = fbm(q*1.7 - uTime*0.18 + n1*1.5);
           float plasma = 0.5 + 0.5*n2;
           float fil = pow(1.0 - abs(n1), 3.0);
-          vec3 deep  = vec3(0.62, 0.28, 0.06);
-          vec3 amber = vec3(0.95, 0.58, 0.14);
-          vec3 gold  = vec3(1.0, 0.84, 0.42);
-          vec3 core  = vec3(1.0, 0.97, 0.86);
+          vec3 deep  = vec3(0.85, 0.32, 0.04);
+          vec3 amber = vec3(1.0, 0.52, 0.10);
+          vec3 gold  = vec3(1.0, 0.72, 0.28);
+          vec3 core  = vec3(1.0, 0.94, 0.78);
           vec3 col = mix(deep, amber, plasma);
           col = mix(col, gold, fil*0.9);
           col = mix(col, core, pow(d, 5.0)*(0.55+0.45*plasma));
           float pulse = 1.0 + 0.05*sin(uTime*1.1);
-          float a = (0.25 + 0.75*pow(d, 1.4))*(0.7+0.5*plasma)*pulse;
-          gl_FragColor = vec4(col*(0.85+0.5*fil)*pulse, a);
+          float a = pow(d, 2.4)*(1.1+0.5*plasma)*pulse;
+          gl_FragColor = vec4(col*(1.05+0.55*fil)*pulse, min(a,1.0));
         }`,
     }),
   );
   scene.add(glow);
-  const sun = new THREE.Mesh(new THREE.SphereGeometry(SUN_R, 64, 64), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }));
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(SUN_R, 64, 64), new THREE.MeshBasicMaterial({ color: 0xfff1c8 }));
   scene.add(sun);
 
+  // falloff acentuado: alpha zera bem antes da borda (fundo continua preto)
   function coronaTexture() {
     const c = document.createElement('canvas');
     c.width = c.height = 256;
     const ctx = c.getContext('2d')!;
     const gr = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    gr.addColorStop(0, 'rgba(255,244,200,1)');
-    gr.addColorStop(0.25, 'rgba(255,214,120,0.55)');
-    gr.addColorStop(0.55, 'rgba(255,170,60,0.18)');
-    gr.addColorStop(1, 'rgba(255,150,40,0)');
+    gr.addColorStop(0, 'rgba(255,236,180,1)');
+    gr.addColorStop(0.18, 'rgba(255,178,80,0.65)');
+    gr.addColorStop(0.38, 'rgba(255,130,30,0.18)');
+    gr.addColorStop(0.6, 'rgba(255,110,20,0)');
+    gr.addColorStop(1, 'rgba(255,110,20,0)');
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, 256, 256);
     return new THREE.CanvasTexture(c);
   }
   const coronaMap = coronaTexture();
-  const corona = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaMap, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
-  corona.scale.setScalar(SUN_R * 5);
+  const corona = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaMap, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }));
+  corona.scale.setScalar(SUN_R * 9);
   scene.add(corona);
-  const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaMap, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const corona2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaMap, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+  corona2.scale.setScalar(SUN_R * 4.5);
+  scene.add(corona2);
+  const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: coronaMap, transparent: true, opacity: 0.38, depthWrite: false, blending: THREE.AdditiveBlending }));
   aura.scale.setScalar(SUN_R * 13);
   scene.add(aura);
 
-  const sunLight = new THREE.PointLight(0xffca70, 1600, 0, 2);
+  const sunLight = new THREE.PointLight(0xffa640, 2400, 0, 2);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x0d0a06, 2));
+  scene.add(new THREE.AmbientLight(0x0c1219, 2.4));
 
   const dyson = new THREE.Group();
   scene.add(dyson);
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
+  // ---------- Casca geodésica: treliça triangular + painéis translúcidos ----------
+  const SHELL_R = 20;
+  const shell = new THREE.Group();
+  dyson.add(shell);
+  const ico = new THREE.IcosahedronGeometry(SHELL_R, 2);
+  const icoPos = ico.attributes.position;
+  const strutMat = new THREE.MeshStandardMaterial({ color: 0x1c2732, roughness: 0.8, metalness: 0.35 });
+  const edgeMap = new Map<string, number>();
+  const edges: [THREE.Vector3, THREE.Vector3][] = [];
+  const vkey = (v: THREE.Vector3) => v.x.toFixed(2) + ',' + v.y.toFixed(2) + ',' + v.z.toFixed(2);
+  for (let f = 0; f < icoPos.count; f += 3) {
+    const a = new THREE.Vector3().fromBufferAttribute(icoPos, f);
+    const b = new THREE.Vector3().fromBufferAttribute(icoPos, f + 1);
+    const c = new THREE.Vector3().fromBufferAttribute(icoPos, f + 2);
+    ([[a, b], [b, c], [c, a]] as [THREE.Vector3, THREE.Vector3][]).forEach(([p, q]) => {
+      const k = [vkey(p), vkey(q)].sort().join('|');
+      if (!edgeMap.has(k)) {
+        edgeMap.set(k, 1);
+        edges.push([p.clone(), q.clone()]);
+      }
+    });
+  }
+  const struts = new THREE.InstancedMesh(boxGeo, strutMat, edges.length);
+  {
+    const dummy = new THREE.Object3D();
+    const zAxis = new THREE.Vector3(0, 0, 1);
+    edges.forEach(([p, q], i) => {
+      const mid = p.clone().add(q).multiplyScalar(0.5);
+      const dir = q.clone().sub(p);
+      const len = dir.length();
+      dummy.position.copy(mid);
+      dummy.quaternion.setFromUnitVectors(zAxis, dir.normalize());
+      dummy.scale.set(0.16, 0.16, len * 1.02);
+      dummy.updateMatrix();
+      struts.setMatrixAt(i, dummy.matrix);
+    });
+  }
+  shell.add(struts);
+  {
+    const verts: number[] = [];
+    for (let f = 0; f < icoPos.count; f += 3) {
+      if (Math.random() > 0.62) continue;
+      for (let j = 0; j < 3; j++) {
+        const v = new THREE.Vector3().fromBufferAttribute(icoPos, f + j).multiplyScalar(0.985);
+        verts.push(v.x, v.y, v.z);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    g.computeVertexNormals();
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0x93a6b2, roughness: 0.7, metalness: 0.15, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    shell.add(new THREE.Mesh(g, panelMat));
+  }
 
   interface RingUserData {
     speed: number;
@@ -272,8 +331,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   function makeRing(cfg: RingConfig) {
     const { radius, width, segments, gapChance, tilt, rotZ, speed } = cfg;
-    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xdedad0, roughness: 0.45, metalness: 0.3, side: THREE.DoubleSide });
-    const windowMat = new THREE.MeshStandardMaterial({ color: 0x55504a, roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide });
+    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xcfdbe4, roughness: 0.22, metalness: 0.65, side: THREE.DoubleSide, emissive: 0xff9a3c, emissiveIntensity: 0.14 });
+    const windowMat = new THREE.MeshStandardMaterial({ color: 0x22303a, roughness: 0.8, metalness: 0.2, side: THREE.DoubleSide });
     const group = new THREE.Group();
     const arc = (Math.PI * 2) / segments;
     const segLen = radius * arc * 0.9;
@@ -311,20 +370,26 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   }
 
   const rings: THREE.Group[] = [];
-  const ringConfigs: RingConfig[] = [
-    { radius: 23, width: 1.6, segments: 36, gapChance: 0.1, tilt: 0.12, rotZ: 0.0, speed: 0.08 },
-    { radius: 22.4, width: 1.3, segments: 34, gapChance: 0.15, tilt: 1.3, rotZ: 0.4, speed: -0.11 },
-    { radius: 22.8, width: 1.4, segments: 34, gapChance: 0.12, tilt: 0.65, rotZ: -0.9, speed: 0.06 },
-    { radius: 18, width: 1.2, segments: 30, gapChance: 0.2, tilt: 1.0, rotZ: 1.6, speed: -0.16 },
-    { radius: 15, width: 1.0, segments: 26, gapChance: 0.22, tilt: 0.45, rotZ: 0.95, speed: 0.22 },
-    { radius: 16.5, width: 1.1, segments: 28, gapChance: 0.2, tilt: 1.45, rotZ: -0.4, speed: -0.26 },
-    { radius: 23.6, width: 1.0, segments: 40, gapChance: 0.28, tilt: 0.9, rotZ: 2.2, speed: 0.04 },
-  ];
-  ringConfigs.forEach((c) => {
-    const r = makeRing(c);
-    rings.push(r);
-    dyson.add(r);
-  });
+  const addRings = (configs: RingConfig[]) => {
+    configs.forEach((c) => {
+      const r = makeRing(c);
+      rings.push(r);
+      dyson.add(r);
+    });
+  };
+  addRings([
+    { radius: 26, width: 0.75, segments: 48, gapChance: 0.12, tilt: 0.15, rotZ: 0.0, speed: 0.1 },
+    { radius: 28.5, width: 0.65, segments: 52, gapChance: 0.18, tilt: 1.25, rotZ: 0.4, speed: -0.13 },
+    { radius: 31, width: 0.7, segments: 56, gapChance: 0.15, tilt: 0.62, rotZ: -0.9, speed: 0.08 },
+    { radius: 27.5, width: 0.6, segments: 50, gapChance: 0.2, tilt: 1.0, rotZ: 1.6, speed: -0.17 },
+    { radius: 33, width: 0.65, segments: 58, gapChance: 0.2, tilt: 0.45, rotZ: 0.95, speed: 0.12 },
+    { radius: 29.7, width: 0.6, segments: 54, gapChance: 0.18, tilt: 1.45, rotZ: -0.4, speed: -0.2 },
+  ]);
+  // grandes anéis externos decorativos (arcos finos, como na referência)
+  addRings([
+    { radius: 42, width: 1.0, segments: 84, gapChance: 0.32, tilt: 1.35, rotZ: 0.5, speed: 0.03 },
+    { radius: 50, width: 0.8, segments: 96, gapChance: 0.48, tilt: 0.28, rotZ: -0.3, speed: -0.02 },
+  ]);
   dyson.rotation.z = 0.15;
 
   const ud = (r: THREE.Group) => r.userData as RingUserData;
@@ -347,8 +412,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (hovered === i) return;
     if (hovered >= 0 && hovered !== lockedIdx) {
       const m = ud(rings[hovered]).mat;
-      m.emissive.setHex(0x000000);
-      m.emissiveIntensity = 0;
+      m.emissive.setHex(0xff9a3c);
+      m.emissiveIntensity = 0.14;
       ud(rings[hovered]).speed = ud(rings[hovered]).baseSpeed;
     }
     hovered = i;
@@ -419,10 +484,12 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     (glow.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
+    shell.rotation.y = t * 0.015;
     sun.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
-    corona.scale.setScalar(SUN_R * 5 * (1 + Math.sin(t * 0.9) * 0.05));
-    aura.scale.setScalar(SUN_R * 13 * (1 + Math.sin(t * 0.5) * 0.1));
-    aura.material.opacity = 0.3 + 0.08 * Math.sin(t * 0.7);
+    corona.scale.setScalar(SUN_R * 9 * (1 + Math.sin(t * 0.9) * 0.05));
+    corona2.scale.setScalar(SUN_R * 4.5 * (1 + Math.sin(t * 1.4) * 0.06));
+    aura.scale.setScalar(SUN_R * 13 * (1 + Math.sin(t * 0.5) * 0.08));
+    aura.material.opacity = 0.38 + 0.08 * Math.sin(t * 0.7);
     sx += (mouseX - sx) * 0.04;
     sy += (mouseY - sy) * 0.04;
     swoop *= 0.94;
