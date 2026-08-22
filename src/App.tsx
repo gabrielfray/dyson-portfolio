@@ -5,15 +5,19 @@ import { useTerminal } from './useTerminal';
 
 const AMBER = '#ffca70';
 
-// Card de dados do planeta (estilo terminal sci-fi) exibido no hover.
-function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang; innerRef: React.RefObject<HTMLDivElement | null> }) {
+interface CardRow {
+  label: string;
+  value: string;
+  sub?: string;
+}
+function buildPlanetRows(planet: PlanetInfo, lang: Lang): CardRow[] {
   const pt = lang === 'pt';
   const L = planetLabels(lang);
   const loc = pt ? 'pt-BR' : 'en-US';
   const nf = (n: number, max = 0, min = 0) => n.toLocaleString(loc, { maximumFractionDigits: max, minimumFractionDigits: min });
   const flux = 1361 / (planet.au * planet.au);
   const fluxStr = flux >= 100 ? nf(flux, 0) : flux >= 10 ? nf(flux, 1, 1) : nf(flux, 2, 2);
-  const rows: { label: string; value: string; sub?: string }[] = [
+  return [
     { label: L.distance, value: `${nf(planet.au, 2)} ${pt ? 'UA' : 'AU'}`, sub: `${nf(planet.km, planet.km < 1000 ? 1 : 0)} ${pt ? 'mi km' : 'M km'}` },
     { label: L.period, value: `${nf(planet.periodY, 2)} ${pt ? 'a' : 'yr'}` },
     { label: L.diameter, value: `${nf(planet.diameterKm, 0)} km` },
@@ -23,6 +27,60 @@ function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang
     { label: L.flux, value: `${fluxStr} W/m²` },
     { label: L.status, value: pt ? planet.status.pt : planet.status.en },
   ];
+}
+
+// Cursor piscante estilo terminal.
+function Caret({ small }: { small?: boolean }) {
+  return <span style={{ display: 'inline-block', width: small ? 6 : 9, height: small ? 12 : 16, background: AMBER, marginLeft: 3, transform: 'translateY(2px)', animation: 'blink 1s step-end infinite' }} />;
+}
+
+// Card de dados do planeta, "digitado" como um terminal sci-fi. Plutão tem uma
+// piada: a classificação escreve "planeta", apaga e corrige para "planeta anão".
+function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang; innerRef: React.RefObject<HTMLDivElement | null> }) {
+  const L = planetLabels(lang);
+  const rows = buildPlanetRows(planet, lang);
+
+  const [nameShown, setNameShown] = useState('');
+  const [kindShown, setKindShown] = useState('');
+  const [rowsN, setRowsN] = useState(0);
+  const [rowText, setRowText] = useState<string[]>(() => rows.map(() => ''));
+  const [caret, setCaret] = useState<'name' | 'kind' | 'row' | 'done'>('name');
+
+  useEffect(() => {
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+    const pt = lang === 'pt';
+    const nm = pt ? planet.name.pt : planet.name.en;
+    const kindFinal = pt ? planet.type.pt : planet.type.en;
+    const vals = buildPlanetRows(planet, lang).map((r) => r.value);
+    const isPluto = planet.key === 'plutao';
+    (async () => {
+      await sleep(120); // deixa o estado inicial (limpo via key) assentar antes de digitar
+      for (let i = 1; i <= nm.length; i++) { if (cancelled) return; setNameShown(nm.slice(0, i)); await sleep(28); }
+      await sleep(160);
+      setCaret('kind');
+      if (isPluto) { // piada: escreve "planeta", hesita, apaga e corrige
+        const w1 = pt ? 'planeta' : 'planet';
+        for (let i = 1; i <= w1.length; i++) { if (cancelled) return; setKindShown(w1.slice(0, i)); await sleep(55); }
+        await sleep(800);
+        for (let i = w1.length - 1; i >= 0; i--) { if (cancelled) return; setKindShown(w1.slice(0, i)); await sleep(42); }
+        await sleep(260);
+      }
+      for (let i = 1; i <= kindFinal.length; i++) { if (cancelled) return; setKindShown(kindFinal.slice(0, i)); await sleep(52); }
+      await sleep(200);
+      setCaret('row');
+      for (let r = 0; r < vals.length; r++) {
+        if (cancelled) return;
+        setRowsN(r + 1);
+        const v = vals[r];
+        for (let i = 1; i <= v.length; i++) { if (cancelled) return; setRowText((prev) => { const n = [...prev]; n[r] = v.slice(0, i); return n; }); await sleep(16); }
+        await sleep(65);
+      }
+      if (!cancelled) setCaret('done');
+    })();
+    return () => { cancelled = true; };
+  }, [planet, lang]);
+
   return (
     <div
       ref={innerRef}
@@ -41,20 +99,27 @@ function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang
         boxShadow: '0 10px 40px rgba(0,0,0,.5)',
       }}
     >
-      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' }}>
-        {pt ? planet.name.pt : planet.name.en}
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', minHeight: 26 }}>
+        {nameShown}{caret === 'name' && <Caret />}
       </div>
-      <div style={{ fontSize: 12, color: AMBER, marginTop: 3, marginBottom: 16 }}>&gt; {pt ? planet.type.pt : planet.type.en}</div>
-      {rows.map((r) => (
-        <div key={r.label} style={{ marginBottom: 9 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ fontSize: 11, letterSpacing: '.18em', color: 'rgba(238,232,218,.5)' }}>{r.label}</span>
-            <span style={{ flex: 1, borderBottom: '1px dotted rgba(255,202,112,.25)', transform: 'translateY(-3px)' }} />
-            <span style={{ fontSize: 13, fontWeight: 500, color: r.label === L.status ? AMBER : '#eee8da' }}>{r.value}</span>
+      <div style={{ fontSize: 12, color: AMBER, marginTop: 3, marginBottom: 16, minHeight: 15 }}>
+        &gt; {kindShown}{caret === 'kind' && <Caret small />}
+      </div>
+      {rows.slice(0, rowsN).map((r, i) => {
+        const done = rowText[i] === r.value;
+        return (
+          <div key={r.label} style={{ marginBottom: 9 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 11, letterSpacing: '.18em', color: 'rgba(238,232,218,.5)' }}>{r.label}</span>
+              <span style={{ flex: 1, borderBottom: '1px dotted rgba(255,202,112,.25)', transform: 'translateY(-3px)' }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: r.label === L.status ? AMBER : '#eee8da' }}>
+                {rowText[i]}{caret === 'row' && i === rowsN - 1 && <Caret small />}
+              </span>
+            </div>
+            {r.sub && done && <div style={{ textAlign: 'right', fontSize: 12, color: 'rgba(238,232,218,.5)', marginTop: 2 }}>{r.sub}</div>}
           </div>
-          {r.sub && <div style={{ textAlign: 'right', fontSize: 12, color: 'rgba(238,232,218,.5)', marginTop: 2 }}>{r.sub}</div>}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -649,7 +714,7 @@ export default function App() {
           style={{ position: 'fixed', top: 0, left: 0, zIndex: 36, pointerEvents: 'none', opacity: 0, willChange: 'transform' }}
         >
           <Reticle />
-          <PlanetCard planet={PLANETS[hoverPlanet]} lang={lang} innerRef={planetCardRef} />
+          <PlanetCard key={PLANETS[hoverPlanet].key + '-' + lang} planet={PLANETS[hoverPlanet]} lang={lang} innerRef={planetCardRef} />
         </div>
       )}
     </div>

@@ -564,8 +564,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const ORBIT_INNER = 85; // raio de mundo do planeta mais interno (Mercúrio)
   const ORBIT_OUTER = 380; // raio de mundo do planeta mais externo (Netuno)
   const ORBIT_SPEED_K = 80; // ω = K / r^1.5 (kepleriano sobre os raios comprimidos)
-  const logMin = Math.log10(PLANETS[0].au);
-  const logMax = Math.log10(PLANETS[PLANETS.length - 1].au);
+  const logMin = Math.log10(0.39); // âncoras fixas Mercúrio..Netuno (Plutão é caso à parte)
+  const logMax = Math.log10(30.1);
   const solar = new THREE.Group();
   scene.add(solar);
   interface PlanetRt {
@@ -684,11 +684,20 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         for (let i = 0; i < 320; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(1, 3), Math.random() < 0.5 ? 0x472e17 : 0xdcb587, rnd(0.2, 0.38)); // speckle fino
       });
     }
+    if (key === 'plutao') {
+      return makeSurface(0xbfa886, (ctx, w, h) => {
+        for (let i = 0; i < 40; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(30, 90), Math.random() < 0.5 ? 0x6e5334 : 0xe0cba2, rnd(0.25, 0.5)); // manchas de tholins claras/escuras
+        splat(ctx, w, w * 0.62, h * 0.58, 70, 0xf1e6cf, 0.6); // "coração" (Tombaugh Regio) claro
+        splat(ctx, w, w * 0.62, h * 0.58, 42, 0xf6eede, 0.5);
+        for (let i = 0; i < 220; i++) splat(ctx, w, rnd(0, w), rnd(0, h), rnd(1, 3), Math.random() < 0.5 ? 0x5b4327 : 0xe6d3ac, rnd(0.2, 0.36)); // speckle
+      });
+    }
     return null;
   };
   PLANETS.forEach((p, i) => {
     const norm = (Math.log10(p.au) - logMin) / (logMax - logMin);
-    const r = ORBIT_INNER + (ORBIT_OUTER - ORBIT_INNER) * norm;
+    // Plutão: órbita bem além de Netuno (easter egg — só aparece com muito zoom out)
+    const r = p.key === 'plutao' ? 560 : ORBIT_INNER + (ORBIT_OUTER - ORBIT_INNER) * norm;
     const size = p.bodyPx * BODY_SCALE * PX_TO_WORLD;
     // textura de superfície (rochosos) ou faixas (gigantes): cor vai na textura,
     // uColor = branco. Urano/Netuno seguem cor sólida (uMap branco 1x1).
@@ -846,9 +855,9 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   addEventListener('pointermove', onPointerMoveParallax);
   const onWheel = (e: WheelEvent) => {
     if (lockedIdx >= 0) return; // painel aberto: wheel rola o painel
-    // zoom-in limitado (evita o bloom do sol estourar de perto); zoom-out amplo
-    // p/ afastar até ver todo o sistema solar (Netuno ~380 unid.)
-    userZoom = Math.max(-18, Math.min(420, userZoom + Math.sign(e.deltaY) * 14));
+    // zoom-in limitado (evita o bloom do sol estourar de perto); zoom-out bem amplo
+    // p/ afastar até achar Plutão (~560 unid., o easter egg mais distante)
+    userZoom = Math.max(-18, Math.min(620, userZoom + Math.sign(e.deltaY) * 16));
   };
   addEventListener('wheel', onWheel, { passive: true });
 

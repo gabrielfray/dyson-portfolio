@@ -170,6 +170,8 @@ export const PLANETS: PlanetInfo[] = [
   { key: 'saturno', name: { pt: 'Saturno', en: 'Saturn' }, type: GAS, au: 9.54, km: 1434, periodY: 29.45, diameterKm: 116460, massE: 95.2, tempC: -139, moons: 274, bodyPx: 9, ring: true, status: { pt: 'ANELADO · IR APENAS', en: 'RINGED · IR ONLY' }, color: 0xcdbb8c, rough: 0.55, metal: 0.12, atmo: 0xefdfb0, atmoI: 0.32 },
   { key: 'urano', name: { pt: 'Urano', en: 'Uranus' }, type: GELO, au: 19.2, km: 2871, periodY: 84.0, diameterKm: 50724, massE: 14.5, tempC: -195, moons: 28, bodyPx: 6, status: { pt: 'GELADO · INCLINADO', en: 'ICY · TILTED' }, color: 0xb6d2d2, rough: 0.4, metal: 0.18, atmo: 0xc4ecec, atmoI: 0.55 },
   { key: 'netuno', name: { pt: 'Netuno', en: 'Neptune' }, type: GELO, au: 30.1, km: 4495, periodY: 164.8, diameterKm: 49244, massE: 17.1, tempC: -201, moons: 16, bodyPx: 6, status: { pt: 'REMOTO · VENTOS', en: 'REMOTE · WINDS' }, color: 0xa2c0c2, rough: 0.4, metal: 0.2, atmo: 0xadd6e2, atmoI: 0.75 },
+  // easter egg: bem mais longe que todos (precisa de bastante zoom out p/ achar).
+  { key: 'plutao', name: { pt: 'Plutão', en: 'Pluto' }, type: { pt: 'planeta anão', en: 'dwarf planet' }, au: 39.5, km: 5906, periodY: 248, diameterKm: 2377, massE: 0.0022, tempC: -229, moons: 5, bodyPx: 3, status: { pt: 'REBAIXADO EM 2006', en: 'DEMOTED IN 2006' }, color: 0xc9b18e, rough: 0.55, metal: 0.12, atmo: 0x9fb6d0, atmoI: 0.15 },
 ];
 
 export interface PlanetLabels {
