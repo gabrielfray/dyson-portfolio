@@ -125,3 +125,74 @@ export const CONTACT = {
   phone: '(19) 99707-2653',
   location: 'Sumaré / São Paulo',
 };
+
+// ---------- Sistema solar: dados reais dos planetas ----------
+// Usados tanto pela cena (au -> raio orbital, bodyPx -> tamanho) quanto pelo
+// painel de hover (estilo terminal sci-fi). Ordem: Mercúrio -> Netuno.
+export interface Bi {
+  pt: string;
+  en: string;
+}
+export interface PlanetInfo {
+  key: string;
+  name: Bi;
+  type: Bi;
+  au: number; // distância média ao Sol (UA)
+  km: number; // distância média (milhões de km)
+  periodY: number; // período orbital (anos)
+  diameterKm: number; // diâmetro equatorial (km)
+  massE: number; // massa (massas terrestres, ⊕)
+  tempC: number; // temperatura média (°C)
+  moons: number; // luas conhecidas
+  bodyPx: number; // tamanho do corpo na tabela comprimida (d/d_terra)^0.35
+  ring?: boolean; // possui anéis proeminentes
+  status: Bi; // rótulo temático (vibe de terminal)
+  color: number; // cor base por albedo (valor/brilho carrega a diferenciação)
+  rough: number; // rugosidade (quanto menor, mais nítido o reflexo do sol)
+  metal: number; // metalness (realce especular)
+  atmo: number; // cor da borda atmosférica (fresnel no limbo)
+  atmoI: number; // intensidade da atmosfera (0 = sem ar, ex.: Mercúrio/Marte)
+}
+
+const ROCHOSO: Bi = { pt: 'planeta rochoso', en: 'rocky planet' };
+const GAS: Bi = { pt: 'gigante gasoso', en: 'gas giant' };
+const GELO: Bi = { pt: 'gigante de gelo', en: 'ice giant' };
+
+// Cores por albedo geométrico real (o VALOR/brilho diferencia — Vênus ~4× Marte).
+// Correções físicas: Marte é butterscotch (não vermelho); Netuno é azul-esverdeado
+// PÁLIDO (o azul-marinho famoso era realce de contraste da Voyager 2).
+export const PLANETS: PlanetInfo[] = [
+  { key: 'mercurio', name: { pt: 'Mercúrio', en: 'Mercury' }, type: ROCHOSO, au: 0.39, km: 57.9, periodY: 0.24, diameterKm: 4879, massE: 0.055, tempC: 167, moons: 0, bodyPx: 3, status: { pt: 'TÓRRIDO · SEM AR', en: 'SCORCHED · NO AIR' }, color: 0x7d746a, rough: 0.95, metal: 0.1, atmo: 0x000000, atmoI: 0.0 },
+  { key: 'venus', name: { pt: 'Vênus', en: 'Venus' }, type: ROCHOSO, au: 0.72, km: 108.2, periodY: 0.62, diameterKm: 12104, massE: 0.815, tempC: 464, moons: 0, bodyPx: 4, status: { pt: 'ESTUFA · OPACO', en: 'GREENHOUSE · OPAQUE' }, color: 0xe9ddb6, rough: 0.75, metal: 0.05, atmo: 0xfff0c4, atmoI: 1.0 },
+  { key: 'terra', name: { pt: 'Terra', en: 'Earth' }, type: ROCHOSO, au: 1.0, km: 149.6, periodY: 1.0, diameterKm: 12742, massE: 1.0, tempC: 15, moons: 1, bodyPx: 4, status: { pt: 'HABITÁVEL · ATIVO', en: 'HABITABLE · ACTIVE' }, color: 0x8ba6c4, rough: 0.5, metal: 0.12, atmo: 0x6db4ff, atmoI: 0.7 },
+  { key: 'marte', name: { pt: 'Marte', en: 'Mars' }, type: ROCHOSO, au: 1.52, km: 227.9, periodY: 1.88, diameterKm: 6779, massE: 0.107, tempC: -63, moons: 2, bodyPx: 3, status: { pt: 'FRIO · POEIRA', en: 'COLD · DUSTY' }, color: 0x936f45, rough: 0.9, metal: 0.06, atmo: 0xc89a6a, atmoI: 0.1 },
+  { key: 'jupiter', name: { pt: 'Júpiter', en: 'Jupiter' }, type: GAS, au: 5.2, km: 778.5, periodY: 11.86, diameterKm: 139820, massE: 317.8, tempC: -108, moons: 95, bodyPx: 9, status: { pt: 'GASOSO · RADIAÇÃO', en: 'GAS · RADIATION' }, color: 0xd3c3a0, rough: 0.55, metal: 0.12, atmo: 0xe6cfa2, atmoI: 0.4 },
+  { key: 'saturno', name: { pt: 'Saturno', en: 'Saturn' }, type: GAS, au: 9.54, km: 1434, periodY: 29.45, diameterKm: 116460, massE: 95.2, tempC: -139, moons: 274, bodyPx: 9, ring: true, status: { pt: 'ANELADO · IR APENAS', en: 'RINGED · IR ONLY' }, color: 0xcdbb8c, rough: 0.55, metal: 0.12, atmo: 0xefdfb0, atmoI: 0.32 },
+  { key: 'urano', name: { pt: 'Urano', en: 'Uranus' }, type: GELO, au: 19.2, km: 2871, periodY: 84.0, diameterKm: 50724, massE: 14.5, tempC: -195, moons: 28, bodyPx: 6, status: { pt: 'GELADO · INCLINADO', en: 'ICY · TILTED' }, color: 0xb6d2d2, rough: 0.4, metal: 0.18, atmo: 0xc4ecec, atmoI: 0.55 },
+  { key: 'netuno', name: { pt: 'Netuno', en: 'Neptune' }, type: GELO, au: 30.1, km: 4495, periodY: 164.8, diameterKm: 49244, massE: 17.1, tempC: -201, moons: 16, bodyPx: 6, status: { pt: 'REMOTO · VENTOS', en: 'REMOTE · WINDS' }, color: 0xa2c0c2, rough: 0.4, metal: 0.2, atmo: 0xadd6e2, atmoI: 0.75 },
+];
+
+export interface PlanetLabels {
+  distance: string;
+  period: string;
+  diameter: string;
+  mass: string;
+  temp: string;
+  moons: string;
+  flux: string;
+  status: string;
+}
+
+export function planetLabels(lang: Lang): PlanetLabels {
+  const pt = lang === 'pt';
+  return {
+    distance: pt ? 'DISTÂNCIA' : 'DISTANCE',
+    period: pt ? 'PERÍODO' : 'PERIOD',
+    diameter: pt ? 'DIÂMETRO' : 'DIAMETER',
+    mass: pt ? 'MASSA' : 'MASS',
+    temp: pt ? 'TEMP.' : 'TEMP.',
+    moons: pt ? 'LUAS' : 'MOONS',
+    flux: pt ? 'FLUXO' : 'FLUX',
+    status: 'STATUS',
+  };
+}

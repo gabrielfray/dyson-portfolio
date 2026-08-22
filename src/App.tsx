@@ -1,9 +1,84 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './dysonScene';
-import { CONTACT, getContent, SECTIONS, type Lang } from './content';
+import { CONTACT, getContent, PLANETS, planetLabels, SECTIONS, type Lang, type PlanetInfo } from './content';
 import { useTerminal } from './useTerminal';
 
 const AMBER = '#ffca70';
+
+// Card de dados do planeta (estilo terminal sci-fi) exibido no hover.
+function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang; innerRef: React.RefObject<HTMLDivElement | null> }) {
+  const pt = lang === 'pt';
+  const L = planetLabels(lang);
+  const loc = pt ? 'pt-BR' : 'en-US';
+  const nf = (n: number, max = 0, min = 0) => n.toLocaleString(loc, { maximumFractionDigits: max, minimumFractionDigits: min });
+  const flux = 1361 / (planet.au * planet.au);
+  const fluxStr = flux >= 100 ? nf(flux, 0) : flux >= 10 ? nf(flux, 1, 1) : nf(flux, 2, 2);
+  const rows: { label: string; value: string; sub?: string }[] = [
+    { label: L.distance, value: `${nf(planet.au, 2)} ${pt ? 'UA' : 'AU'}`, sub: `${nf(planet.km, planet.km < 1000 ? 1 : 0)} ${pt ? 'mi km' : 'M km'}` },
+    { label: L.period, value: `${nf(planet.periodY, 2)} ${pt ? 'a' : 'yr'}` },
+    { label: L.diameter, value: `${nf(planet.diameterKm, 0)} km` },
+    { label: L.mass, value: `${planet.massE.toLocaleString(loc, { maximumSignificantDigits: 3 })} ⊕` },
+    { label: L.temp, value: `${nf(planet.tempC, 0)} °C` },
+    { label: L.moons, value: `${planet.moons}` },
+    { label: L.flux, value: `${fluxStr} W/m²` },
+    { label: L.status, value: pt ? planet.status.pt : planet.status.en },
+  ];
+  return (
+    <div
+      ref={innerRef}
+      style={{
+        position: 'absolute',
+        top: '50%',
+        left: 46,
+        transform: 'translateY(-50%)',
+        width: 272,
+        background: 'linear-gradient(105deg, rgba(6,5,10,.9), rgba(10,8,14,.97))',
+        border: '1px solid rgba(255,202,112,.35)',
+        borderRadius: 12,
+        backdropFilter: 'blur(12px)',
+        padding: '20px 22px',
+        fontFamily: "'IBM Plex Mono', monospace",
+        boxShadow: '0 10px 40px rgba(0,0,0,.5)',
+      }}
+    >
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' }}>
+        {pt ? planet.name.pt : planet.name.en}
+      </div>
+      <div style={{ fontSize: 12, color: AMBER, marginTop: 3, marginBottom: 16 }}>&gt; {pt ? planet.type.pt : planet.type.en}</div>
+      {rows.map((r) => (
+        <div key={r.label} style={{ marginBottom: 9 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 11, letterSpacing: '.18em', color: 'rgba(238,232,218,.5)' }}>{r.label}</span>
+            <span style={{ flex: 1, borderBottom: '1px dotted rgba(255,202,112,.25)', transform: 'translateY(-3px)' }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: r.label === L.status ? AMBER : '#eee8da' }}>{r.value}</span>
+          </div>
+          {r.sub && <div style={{ textAlign: 'right', fontSize: 12, color: 'rgba(238,232,218,.5)', marginTop: 2 }}>{r.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Reticula de alvo (cantos) centrada no planeta.
+function Reticle() {
+  const corner = (pos: React.CSSProperties): React.CSSProperties => ({
+    position: 'absolute',
+    width: 11,
+    height: 11,
+    borderColor: AMBER,
+    borderStyle: 'solid',
+    borderWidth: 0,
+    ...pos,
+  });
+  return (
+    <div style={{ position: 'absolute', width: 58, height: 58, transform: 'translate(-50%, -50%)' }}>
+      <span style={corner({ top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2 })} />
+      <span style={corner({ top: 0, right: 0, borderTopWidth: 2, borderRightWidth: 2 })} />
+      <span style={corner({ bottom: 0, left: 0, borderBottomWidth: 2, borderLeftWidth: 2 })} />
+      <span style={corner({ bottom: 0, right: 0, borderBottomWidth: 2, borderRightWidth: 2 })} />
+    </div>
+  );
+}
 
 function LegendButton({
   label,
@@ -44,9 +119,12 @@ export default function App() {
   const [lang, setLang] = useState<Lang>('pt');
   const [hoverRing, setHoverRing] = useState<Section | null>(null);
   const [sel, setSel] = useState<number | null>(null);
+  const [hoverPlanet, setHoverPlanet] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
+  const planetOverlayRef = useRef<HTMLDivElement | null>(null);
+  const planetCardRef = useRef<HTMLDivElement | null>(null);
   const selRef = useRef<number | null>(null);
   useEffect(() => {
     selRef.current = sel;
@@ -84,6 +162,19 @@ export default function App() {
       sections: SECTIONS,
       onHover: (s) => setHoverRing(selRef.current == null ? s : null),
       onSelect: (_s, idx) => select(idx),
+      onPlanetHover: (idx) => setHoverPlanet(idx),
+      onPlanetTrack: (x, y) => {
+        const el2 = planetOverlayRef.current;
+        if (!el2) return;
+        el2.style.transform = `translate(${x}px, ${y}px)`;
+        el2.style.opacity = '1';
+        const card = planetCardRef.current;
+        if (card) {
+          const rightSide = x > innerWidth * 0.58; // vira o card p/ não sair da tela
+          card.style.left = rightSide ? 'auto' : '46px';
+          card.style.right = rightSide ? '46px' : 'auto';
+        }
+      },
     });
     sceneApiRef.current = api;
     return () => {
@@ -549,6 +640,17 @@ export default function App() {
             )}
           </div>
         </aside>
+      )}
+
+      {/* Painel de dados do planeta (hover) — reticula + card estilo terminal */}
+      {hoverPlanet !== null && (
+        <div
+          ref={planetOverlayRef}
+          style={{ position: 'fixed', top: 0, left: 0, zIndex: 36, pointerEvents: 'none', opacity: 0, willChange: 'transform' }}
+        >
+          <Reticle />
+          <PlanetCard planet={PLANETS[hoverPlanet]} lang={lang} innerRef={planetCardRef} />
+        </div>
       )}
     </div>
   );

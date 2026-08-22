@@ -4,6 +4,96 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { PLANETS } from './content';
+
+// Shader dos planetas: ilumina a partir da origem (a estrela) — hemisfério aceso
+// + reflexo especular do sol — de forma independente das luzes da cena, para não
+// afetar a esfera/estrutura. cameraPosition/viewMatrix/modelMatrix são injetados
+// automaticamente pelo ShaderMaterial do three.
+const PLANET_VERT = `
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }`;
+const PLANET_FRAG = `
+  uniform vec3 uColor;
+  uniform float uShin;
+  uniform float uSpec;
+  uniform float uAmbient;
+  uniform sampler2D uMap;   // faixas (gigantes) ou textura branca 1x1 (demais)
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec2 vUv;
+  void main() {
+    vec3 albedo = uColor * texture2D(uMap, vUv).rgb;
+    vec3 N = normalize(vWorldNormal);
+    vec3 L = normalize(-vWorldPos);              // luz vem da origem (o sol)
+    float diff = max(dot(N, L), 0.0);
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 H = normalize(L + V);
+    float spec = (diff > 0.0 ? 1.0 : 0.0) * uSpec * pow(max(dot(N, H), 0.0), uShin);
+    vec3 col = albedo * (uAmbient + diff) + vec3(spec);
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+
+// Borda atmosférica: casca ~6% maior, BackSide + aditivo, fresnel no limbo,
+// realçada no lado iluminado pelo sol (limbo em "twilight"). É o que transforma
+// a bolinha num mundo a 10-32px. Corpos sem ar (atmoI 0) não recebem casca.
+const ATMO_FRAG = `
+  uniform vec3 uAtmo;
+  uniform float uI;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  void main() {
+    vec3 N = normalize(vWorldNormal);
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 L = normalize(-vWorldPos);
+    float f = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    float lit = max(dot(N, L), 0.0);
+    gl_FragColor = vec4(uAtmo, f * uI * (0.25 + 0.9 * lit));
+  }`;
+
+// Anéis de Saturno com perfil radial real: anel C (tênue), B (denso/brilhante),
+// lacuna de Cassini (transparente), anel A (médio). vN = raio normalizado 0..1.
+const RING_VERT = `
+  uniform float uInner;
+  uniform float uOuter;
+  varying float vN;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  void main() {
+    float rad = length(position.xy);
+    vN = (rad - uInner) / (uOuter - uInner);
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }`;
+const RING_FRAG = `
+  uniform vec3 uColor;
+  varying float vN;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  float dens(float n) {
+    float a = 0.0;
+    a += 0.32 * smoothstep(0.0, 0.04, n) * (1.0 - smoothstep(0.25, 0.30, n)); // anel C
+    a += 0.90 * smoothstep(0.28, 0.33, n) * (1.0 - smoothstep(0.66, 0.70, n)); // anel B
+    a += 0.60 * smoothstep(0.77, 0.81, n) * (1.0 - smoothstep(0.97, 1.0, n));  // anel A
+    return clamp(a, 0.0, 1.0);
+  }
+  void main() {
+    float op = dens(vN);
+    if (op < 0.01) discard; // lacuna de Cassini some
+    vec3 L = normalize(-vWorldPos);
+    float lit = 0.45 + 0.55 * abs(dot(normalize(vWorldNormal), L));
+    gl_FragColor = vec4(uColor * lit, op);
+  }`;
 
 export interface Section {
   id: string;
@@ -16,6 +106,8 @@ export interface DysonSceneOptions {
   sections?: Section[];
   onHover?: (section: Section | null) => void;
   onSelect?: (section: Section, index: number) => void;
+  onPlanetHover?: (index: number | null) => void;
+  onPlanetTrack?: (x: number, y: number) => void;
 }
 
 export interface DysonSceneApi {
@@ -405,6 +497,110 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   ]);
   dyson.rotation.z = 0.15;
 
+  // ---------- Sistema solar: planetas orbitando a "estrela" (a esfera) ----------
+  // Âncora de escala: casca = 1 UA = SHELL_R. As órbitas usam log10(UA) espalhado
+  // num intervalo mais realista (o interno bem fora dos anéis; o externo alcançável
+  // no zoom out). Corpos por (d/d_terra)^0.35 (via bodyPx) * escala de leitura.
+  const AU_PX = 95;
+  const PX_TO_WORLD = SHELL_R / AU_PX;
+  const BODY_SCALE = 2.4; // ESCALA_CORPO: leitura dos corpos (1.0 = tabela exata)
+  const ORBIT_INNER = 85; // raio de mundo do planeta mais interno (Mercúrio)
+  const ORBIT_OUTER = 380; // raio de mundo do planeta mais externo (Netuno)
+  const ORBIT_SPEED_K = 80; // ω = K / r^1.5 (kepleriano sobre os raios comprimidos)
+  const logMin = Math.log10(PLANETS[0].au);
+  const logMax = Math.log10(PLANETS[PLANETS.length - 1].au);
+  const solar = new THREE.Group();
+  scene.add(solar);
+  interface PlanetRt {
+    pivot: THREE.Group;
+    body: THREE.Mesh;
+    r: number;
+    omega: number;
+    angle: number;
+    spin: number;
+  }
+  const planets: PlanetRt[] = [];
+  const planetPick: THREE.Mesh[] = [];
+  // textura branca 1x1 (planetas sem faixa) + gerador de faixas (gigantes gasosos)
+  const whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+  whiteTex.needsUpdate = true;
+  const makeBandTexture = (light: number, dark: number) => {
+    const cv = document.createElement('canvas');
+    cv.width = 8;
+    cv.height = 512;
+    const ctx = cv.getContext('2d')!;
+    const L = new THREE.Color(light), D = new THREE.Color(dark), c = new THREE.Color();
+    for (let y = 0; y < 512; y++) {
+      const lat = y / 512;
+      let t = 0.5 + 0.5 * Math.sin(lat * Math.PI * 13); // ~6-7 faixas largas de latitude
+      t = t * 0.6 + (0.5 + 0.5 * Math.sin(lat * Math.PI * 33)) * 0.25; // detalhe fino
+      t = Math.min(1, Math.max(0, t + (Math.random() - 0.5) * 0.12)); // ruído
+      c.copy(D).lerp(L, t);
+      ctx.fillStyle = `rgb(${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0})`;
+      ctx.fillRect(0, y, 8, 1);
+    }
+    return new THREE.CanvasTexture(cv);
+  };
+  PLANETS.forEach((p, i) => {
+    const norm = (Math.log10(p.au) - logMin) / (logMax - logMin);
+    const r = ORBIT_INNER + (ORBIT_OUTER - ORBIT_INNER) * norm;
+    const size = p.bodyPx * BODY_SCALE * PX_TO_WORLD;
+    // gigantes gasosos ganham faixas (canvas); a cor vai na textura e uColor = branco
+    const bandTex = p.key === 'jupiter' ? makeBandTexture(0xe8dcc0, 0x9c7850)
+      : p.key === 'saturno' ? makeBandTexture(0xe0d2a0, 0xb09860)
+        : null;
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(bandTex ? 0xffffff : p.color) },
+        uShin: { value: THREE.MathUtils.lerp(6, 90, 1 - p.rough) }, // menos rugoso -> glint concentrado
+        uSpec: { value: 0.22 + p.metal * 0.9 },
+        uAmbient: { value: 0.08 }, // piso p/ o lado escuro não sumir
+        uMap: { value: bandTex ?? whiteTex },
+      },
+      vertexShader: PLANET_VERT,
+      fragmentShader: PLANET_FRAG,
+    });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(size, 32, 32), mat);
+    body.position.x = r; // luz vem da origem: a fase iluminada aponta p/ a estrela
+    if (p.atmoI > 0) {
+      const atmoMat = new THREE.ShaderMaterial({
+        uniforms: { uAtmo: { value: new THREE.Color(p.atmo) }, uI: { value: p.atmoI } },
+        vertexShader: PLANET_VERT,
+        fragmentShader: ATMO_FRAG,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        depthWrite: false,
+      });
+      body.add(new THREE.Mesh(new THREE.SphereGeometry(size * 1.06, 32, 32), atmoMat));
+    }
+    if (p.ring) {
+      // proporções reais (em raios de Saturno): C 1.24, B 1.53, Cassini 1.95–2.03, A 2.27
+      const rIn = size * 1.24, rOut = size * 2.27;
+      const ringGeo = new THREE.RingGeometry(rIn, rOut, 128, 8);
+      const ringMat = new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: new THREE.Color(0xd8c79a) }, uInner: { value: rIn }, uOuter: { value: rOut } },
+        vertexShader: RING_VERT,
+        fragmentShader: RING_FRAG,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.set(Math.PI / 2 - 0.45, 0, 0); // levemente inclinado
+      body.add(ring);
+    }
+    // esfera invisível maior p/ facilitar o hover (planetas são pequenos)
+    const pick = new THREE.Mesh(new THREE.SphereGeometry(Math.max(size * 4, 5), 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
+    pick.userData.planetIndex = i;
+    body.add(pick);
+    planetPick.push(pick);
+    const pivot = new THREE.Group(); // gira em Y -> órbita circular no plano XZ (eclíptica)
+    pivot.add(body);
+    solar.add(pivot);
+    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12 });
+  });
+
   const ud = (r: THREE.Group) => r.userData as RingUserData;
 
   // ---------- Interatividade: anéis como portais de navegação ----------
@@ -420,6 +616,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let hovered = -1, swoop = 0, lockedIdx = -1, focus = 0, targetFocus = 0;
+  let planetHover = -1;
 
   function setHover(i: number) {
     if (hovered === i) return;
@@ -440,14 +637,36 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (opts.onHover) opts.onHover(i >= 0 ? ud(rings[i]).section ?? null : null);
   }
 
+  const clearPlanetHover = () => {
+    if (planetHover >= 0) {
+      planetHover = -1;
+      opts.onPlanetHover?.(null);
+    }
+  };
   const onPointerMovePick = (e: PointerEvent) => {
+    pointer.x = (e.clientX / innerWidth) * 2 - 1;
+    pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    // planetas (exploração) — só quando nenhuma seção está aberta
+    if (lockedIdx < 0 && planetPick.length) {
+      const ph = raycaster.intersectObjects(planetPick, false);
+      if (ph.length) {
+        const idx = ph[0].object.userData.planetIndex as number;
+        if (planetHover !== idx) {
+          planetHover = idx;
+          opts.onPlanetHover?.(idx);
+        }
+        setHover(-1);
+        renderer.domElement.style.cursor = 'pointer';
+        return;
+      }
+    }
+    clearPlanetHover();
+    // anéis (navegação) — lógica original
     if (scrollP > 0.45 || !pickMeshes.length || lockedIdx >= 0) {
       setHover(-1);
       return;
     }
-    pointer.x = (e.clientX / innerWidth) * 2 - 1;
-    pointer.y = -(e.clientY / innerHeight) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(pickMeshes, false);
     setHover(hits.length ? (hits[0].object.userData.ringIndex as number) : -1);
   };
@@ -483,13 +702,18 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   addEventListener('pointermove', onPointerMoveParallax);
   const onWheel = (e: WheelEvent) => {
     if (lockedIdx >= 0) return; // painel aberto: wheel rola o painel
-    userZoom = Math.max(-18, Math.min(70, userZoom + Math.sign(e.deltaY) * 4));
+    // zoom-in limitado (evita o bloom do sol estourar de perto); zoom-out amplo
+    // p/ afastar até ver todo o sistema solar (Netuno ~380 unid.)
+    userZoom = Math.max(-18, Math.min(420, userZoom + Math.sign(e.deltaY) * 14));
   };
   addEventListener('wheel', onWheel, { passive: true });
 
   const clock = new THREE.Clock();
+  const projV = new THREE.Vector3(); // reutilizado p/ projetar planetas na tela
   let sx = 0, sy = 0;
   let camTheta = 0, lastT = 0;
+  let alignTarget: number | null = null; // alvo p/ alinhar ao selecionar e voltar ao fechar
+  let returnTheta = 0;                    // orientação a retomar quando o painel fecha
   let rafId = 0;
   function animate() {
     rafId = requestAnimationFrame(animate);
@@ -501,6 +725,16 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
+    planets.forEach((p, i) => {
+      if (i !== planetHover) p.angle += p.omega * dt; // congela o planeta sob o cursor
+      p.pivot.rotation.y = p.angle; // órbita kepleriana no plano da eclíptica
+      p.body.rotation.y += p.spin * dt; // rotação do próprio planeta
+    });
+    if (planetHover >= 0 && opts.onPlanetTrack) {
+      planets[planetHover].body.getWorldPosition(projV);
+      projV.project(camera);
+      opts.onPlanetTrack((projV.x * 0.5 + 0.5) * innerWidth, (-projV.y * 0.5 + 0.5) * innerHeight);
+    }
     sun.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
     corona.scale.setScalar(SUN_R * 9 * (1 + Math.sin(t * 0.9) * 0.05));
     corona2.scale.setScalar(SUN_R * 4.5 * (1 + Math.sin(t * 1.4) * 0.06));
@@ -510,13 +744,23 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     sy += (mouseY - sy) * 0.04;
     swoop *= 0.94;
     focus += (targetFocus - focus) * 0.06;
-    // ângulo acumulado: mudar o foco altera a VELOCIDADE de rotação, não o ângulo
-    // absoluto — evita o giro brusco ao abrir/fechar um painel. Quase para no foco.
-    camTheta += dt * 0.05 * (1 - focus * 0.85);
+    // Rotação da câmera:
+    // - com um anel selecionado (ou voltando ao fechar), gira suavemente até um
+    //   ângulo alvo e fica ali (alinhada);
+    // - sem seleção, órbita livre acumulando o ângulo (sem giro brusco ao focar).
+    if (alignTarget !== null) {
+      camTheta += (alignTarget - camTheta) * 0.02;
+      if (lockedIdx < 0 && Math.abs(alignTarget - camTheta) < 0.002) {
+        camTheta = alignTarget;
+        alignTarget = null; // voltou à posição inicial: retoma a órbita livre
+      }
+    } else {
+      camTheta += dt * 0.05 * (1 - focus * 0.85);
+    }
     const theta = camTheta + sx * 0.35;
     // posição inicial afastada: enquadra a esfera inteira com folga. Ao focar,
     // um pequeno empurrão extra dá margem ao lado do painel aberto.
-    const radius = 105 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus);
+    const radius = 150 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus);
     const phi = 1.35 + sy * 0.2;
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
@@ -537,12 +781,23 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       }
       lockedIdx = i;
       hovered = -1;
+      if (i >= 0) clearPlanetHover(); // some com o painel do planeta ao abrir seção
       if (i >= 0 && rings[i]) {
         const m = ud(rings[i]).mat;
         m.emissive.setHex(0xffca70);
         m.emissiveIntensity = 1.1;
         ud(rings[i]).speed = ud(rings[i]).baseSpeed * 3;
         swoop = 1;
+        // gira suavemente até o ângulo de alinhamento deste anel (caminho mais curto)
+        returnTheta = camTheta;
+        const TWO_PI = Math.PI * 2;
+        const target = (TWO_PI / 6) * i;
+        let d = (((target - camTheta) % TWO_PI) + TWO_PI) % TWO_PI;
+        if (d > Math.PI) d -= TWO_PI;
+        alignTarget = camTheta + d;
+      } else {
+        // volta com suavidade à orientação inicial
+        alignTarget = returnTheta;
       }
       renderer.domElement.style.cursor = '';
     },
