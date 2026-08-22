@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { termDefs, type Lang, type TermDef } from './content';
+import { termDefs, type Lang, type TermDef } from '../data/content';
 
 export interface TermLine {
   text: string;

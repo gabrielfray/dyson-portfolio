@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { PLANETS } from './content';
+import { PLANETS } from '../data/content';
 
 // Shader dos planetas: ilumina a partir da origem (a estrela) — hemisfério aceso
 // + reflexo especular do sol — de forma independente das luzes da cena, para não

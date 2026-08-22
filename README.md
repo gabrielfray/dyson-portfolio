@@ -14,6 +14,7 @@ TypeScript com `three.js`.
 - **Vite 8** (build/dev)
 - **three.js** — cena 3D, shaders GLSL (simplex noise / fbm no sol) e
   `EffectComposer` + `UnrealBloomPass` para o bloom
+- **styled-components** — estilos por componente (CSS-in-JS)
 - **@fontsource** — IBM Plex Mono e Space Grotesk
 
 ## Funcionalidades
@@ -42,12 +43,24 @@ npm run lint     # oxlint
 
 ## Estrutura
 
+Organizado por responsabilidade; o CSS fica em **styled-components** (arquivos
+`*.styles.ts` co-localizados com cada componente).
+
 ```
 src/
-  main.tsx        # entrada — importa fontes e monta o App
-  App.tsx         # UI: terminal, legenda, painel de seções, i18n
-  dysonScene.ts   # cena three.js (sol, anéis, estrelas, bloom, interação)
-  content.ts      # conteúdo bilíngue (seções, projetos, experiência, stack…)
-  useTerminal.ts  # hook do efeito de console datilografado
-  index.css       # estilos globais e keyframes
+  main.tsx                # entrada — importa fontes e monta o App
+  App.tsx                 # composição: estado, cena 3D e layout dos componentes
+  App.styles.ts           # container raiz, canvas e overlay do planeta
+  styles/
+    theme.ts              # tokens (cores e fontes)
+    GlobalStyle.ts        # estilos globais + keyframes (createGlobalStyle)
+  scene/
+    dysonScene.ts         # cena three.js (sol, anéis, planetas, galáxias, bloom)
+  data/
+    content.ts            # conteúdo bilíngue + dados dos planetas
+  hooks/
+    useTerminal.ts        # efeito de console datilografado
+  components/             # cada componente + seu arquivo *.styles.ts
+    LangToggle · Console · RingHoverIndicator · RingLegend
+    SectionPanel · PlanetCard · Reticle · Caret · buildPlanetRows
 ```

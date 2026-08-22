@@ -1,4 +1,4 @@
-import type { Section } from './dysonScene';
+import type { Section } from '../scene/dysonScene';
 
 export type Lang = 'pt' | 'en';
 
@@ -98,7 +98,7 @@ export function getContent(lang: Lang): Content {
     ],
     jobs: [
       { period: T('jan 2024 — atual', 'Jan 2024 — present'), mode: T('remoto · PJ', 'remote · contract'), role: 'Full Stack Dev', company: 't-Risk', desc: T('Plataforma SaaS B2B de avaliação de riscos: redesign completo da interface, design system documentado, integrações NestJS/AWS de ponta a ponta e sustentação do site em Symfony.', 'B2B risk assessment SaaS: full interface redesign, documented design system, end-to-end NestJS/AWS integrations and Symfony site maintenance.') },
-      { period: T('2024 — atual', '2024 — present'), mode: T('remoto · PJ', 'remote · contract'), role: 'Dev', company: 'Dextra Labs', desc: T('Atuação simultânea ao contrato principal, com gestão própria de agenda e entregas para dois clientes em paralelo — incluindo o produto Jureo.', 'Concurrent with the main contract, managing my own schedule and deliveries for two clients in parallel — including the Jureo product.') },
+      { period: T('dez 2025 — atual', 'Dec 2025 — present'), mode: T('remoto · PJ', 'remote · contract'), role: 'Dev', company: 'Dextra Labs', desc: T('Atuação simultânea ao contrato principal, com gestão própria de agenda e entregas para dois clientes em paralelo — incluindo o produto Jureo.', 'Concurrent with the main contract, managing my own schedule and deliveries for two clients in parallel — including the Jureo product.') },
       { period: T('abr — out 2023', 'Apr — Oct 2023'), mode: 'Campinas/SP', role: 'Front-End Dev', company: 'Performa_IT', desc: T('Aplicações web e interfaces responsivas a partir de layouts, em time ágil com Scrum: cerimônias, refinamento e code review.', 'Web apps and responsive interfaces from layouts, in an agile Scrum team: ceremonies, refinement and code review.') },
       { period: T('mai 2022 — jan 2023', 'May 2022 — Jan 2023'), mode: T('remoto', 'remote'), role: T('Monitor de Tecnologia', 'Tech Mentor'), company: 'Kenzie Academy', desc: T('Suporte técnico a turmas full stack: correção de entregas, atendimento de dúvidas, testes e simulados com relatórios individuais.', 'Technical support for full stack cohorts: grading, Q&A, tests and mock exams with individual reports.') },
     ],
