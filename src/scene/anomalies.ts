@@ -56,6 +56,23 @@ export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; upd
     const pick = addPick(g, 'ufo', 16);
     anomalies.push({ key: 'ufo', body: g, pick });
     const R = 1500; // mesma distância de antes, mas agora vagando pelo céu
+
+    // Farol piscando "UFO" em código Morse (..- ..-. ---) — padrão distinto de
+    // estrela. ponto=1u, traço=3u; espaço intra-letra=1u, entre-letras=3u, fim=7u.
+    const UNIT = 0.18; // segundos por unidade
+    const MORSE = [[1, 1, 3], [1, 1, 3, 1], [3, 3, 3]]; // U, F, O (dot=1, dash=3)
+    const segs: { on: boolean; start: number; end: number }[] = [];
+    let acc = 0;
+    const push = (on: boolean, units: number) => { segs.push({ on, start: acc, end: acc + units * UNIT }); acc += units * UNIT; };
+    MORSE.forEach((letter, li) => {
+      letter.forEach((sym, si) => {
+        push(true, sym); // símbolo (ponto/traço)
+        if (si < letter.length - 1) push(false, 1); // gap intra-letra
+      });
+      push(false, li < MORSE.length - 1 ? 3 : 7); // gap entre-letras / fim de palavra
+    });
+    const CYCLE = acc;
+
     updaters.push((t) => {
       // deriva quase-aleatória sobre uma esfera de raio R (azimute anda + ondula,
       // elevação sobe/desce em frequências irracionais -> caminho que não repete)
@@ -64,10 +81,13 @@ export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; upd
       const ce = Math.cos(el);
       g.position.set(R * ce * Math.sin(az), R * Math.sin(el), R * ce * Math.cos(az));
       g.rotation.y = t * 0.35;
-      const on = Math.sin(t * 3) > 0.35; // pisca (a pista p/ achar)
-      blipMat.opacity = on ? 0.95 : 0.15;
-      beaconMat.opacity = on ? 0.7 : 0.04;
-      beacon.scale.setScalar(on ? 9 : 4);
+      // pisca em Morse (a pista p/ achar): procura o segmento atual no ciclo
+      const ph = t % CYCLE;
+      let on = false;
+      for (const s of segs) { if (ph >= s.start && ph < s.end) { on = s.on; break; } }
+      blipMat.opacity = on ? 0.95 : 0.12;
+      beaconMat.opacity = on ? 0.75 : 0.03;
+      beacon.scale.setScalar(on ? 9 : 3.5);
     });
   }
 
