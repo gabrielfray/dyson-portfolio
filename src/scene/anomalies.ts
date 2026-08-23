@@ -36,23 +36,38 @@ export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; upd
   // --- Objeto não identificado: pequeno, escuro e discreto, bem escondido ---
   {
     const g = new THREE.Group();
-    g.position.set(1040, -680, -980); // bem longe, na borda inferior
+    g.position.set(-860, -560, -1120); // posição inicial (o updater faz ele vagar)
     const hull = new THREE.Mesh(
-      new THREE.OctahedronGeometry(4, 0),
+      new THREE.OctahedronGeometry(5, 0),
       new THREE.MeshStandardMaterial({ color: 0x1b1f26, metalness: 0.7, roughness: 0.45, emissive: 0x05070a, emissiveIntensity: 1, flatShading: true }),
     );
     hull.scale.set(1, 0.5, 1);
     g.add(hull);
     const blipMat = new THREE.MeshBasicMaterial({ color: 0xffca70, transparent: true, opacity: 0.6 });
-    const blip = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), blipMat);
-    blip.position.y = 2.2;
+    const blip = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), blipMat);
+    blip.position.y = 2.8;
     g.add(blip);
+    // farol: leve brilho âmbar que pisca — a "dica" p/ achar o corpo escuro sem entregá-lo
+    const beaconMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,202,112,0.9)', 'rgba(255,170,60,0.25)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+    const beacon = new THREE.Sprite(beaconMat);
+    beacon.position.y = 2.8;
+    g.add(beacon);
     scene.add(g);
     const pick = addPick(g, 'ufo', 16);
     anomalies.push({ key: 'ufo', body: g, pick });
+    const R = 1500; // mesma distância de antes, mas agora vagando pelo céu
     updaters.push((t) => {
+      // deriva quase-aleatória sobre uma esfera de raio R (azimute anda + ondula,
+      // elevação sobe/desce em frequências irracionais -> caminho que não repete)
+      const az = t * 0.045 + Math.sin(t * 0.017) * 1.2;
+      const el = Math.sin(t * 0.021) * 0.8 + Math.sin(t * 0.011) * 0.4;
+      const ce = Math.cos(el);
+      g.position.set(R * ce * Math.sin(az), R * Math.sin(el), R * ce * Math.cos(az));
       g.rotation.y = t * 0.35;
-      blipMat.opacity = Math.sin(t * 4) > 0.5 ? 0.9 : 0.12; // pisca discreto
+      const on = Math.sin(t * 3) > 0.35; // pisca (a pista p/ achar)
+      blipMat.opacity = on ? 0.95 : 0.15;
+      beaconMat.opacity = on ? 0.7 : 0.04;
+      beacon.scale.setScalar(on ? 9 : 4);
     });
   }
 

@@ -186,6 +186,10 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         return;
       }
     }
+    if (anomalyHover >= 0) { // clicou num easter egg -> efeito sonoro/etc.
+      opts.onAnomalyClick?.(anomalies[anomalyHover].key);
+      return;
+    }
     if (hovered >= 0 && scrollP <= 0.45 && lockedIdx < 0) {
       swoop = 1;
       if (opts.onSelect) opts.onSelect(ud(rings[hovered]).section!, hovered);

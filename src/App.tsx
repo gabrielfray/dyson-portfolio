@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
+import { playAnomalySfx, stopAllSfx } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -66,6 +67,7 @@ export default function App() {
       onSelect: (_s, idx) => select(idx),
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
+      onAnomalyClick: (key) => playAnomalySfx(key),
       onManual: (m) => setManual(m),
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
@@ -100,6 +102,15 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
+
+  // Qualquer clique interrompe o som atual (fase de captura, roda ANTES do
+  // clique da cena que toca o som do easter egg). Assim: clicar no objeto toca;
+  // clicar em qualquer outro lugar só para.
+  useEffect(() => {
+    const stop = () => stopAllSfx();
+    window.addEventListener('click', stop, true);
+    return () => window.removeEventListener('click', stop, true);
+  }, []);
 
   const selId = sel != null ? SECTIONS[sel].id : null;
   const focused = sel != null;

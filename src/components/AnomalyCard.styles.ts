@@ -6,14 +6,20 @@ export const ACard = styled(Card)`
   animation: cardIn 0.4s ease both;
 `;
 
-// Barra de censura (tarja) para dados classificados.
-export const Redacted = styled.span<{ $w: number }>`
+// Valor "corrompido": glyphs embaralhando (dados classificados/ininteligíveis).
+export const GlitchVal = styled.span`
+  font-family: ${MONO};
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: ${AMBER};
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255, 202, 112, 0.35);
+`;
+
+// Caractere de ponta-cabeça (parte do efeito de scramble).
+export const Flip = styled.span`
   display: inline-block;
-  width: ${(p) => p.$w}px;
-  height: 12px;
-  border-radius: 1px;
-  background: repeating-linear-gradient(90deg, rgba(255, 202, 112, 0.3) 0 4px, rgba(255, 202, 112, 0.1) 4px 8px);
-  transform: translateY(1px);
+  transform: rotate(180deg);
 `;
 
 export const Note = styled.div<{ $warn?: boolean }>`

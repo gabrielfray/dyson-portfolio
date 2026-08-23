@@ -209,7 +209,7 @@ export function getAnomaly(key: string, lang: Lang): AnomalyInfo {
           { label: T('ASSINATURA', 'SIGNATURE'), value: '' },
         ],
         status: T('CLASSIFICADO', 'CLASSIFIED'),
-        note: T('NÃO RESPONDA · NÃO RESPONDA · NÃO RESPONDA', 'DO NOT ANSWER · DO NOT ANSWER · DO NOT ANSWER'),
+        note: 'λ the Free Man', // ref. aos Vortigaunts (Half-Life 2); λ = símbolo da série
         glitch: true,
         redacted: true,
       };

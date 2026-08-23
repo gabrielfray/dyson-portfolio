@@ -20,6 +20,30 @@ function GlitchText({ len = 9 }: { len?: number }) {
   return <>{s}</>;
 }
 
+// Valor "corrompido": glyphs embaralhando, com o comprimento oscilando (apaga e
+// reescreve) e alguns caracteres de ponta-cabeça. Cada linha usa um seed p/
+// ficarem fora de sincronia entre si.
+function GlitchValue({ seed }: { seed: number }) {
+  const [chars, setChars] = useState<{ c: string; flip: boolean }[]>([]);
+  useEffect(() => {
+    let phase = seed * 2;
+    const id = window.setInterval(() => {
+      phase += 1;
+      const base = 6 + (seed % 4);
+      const len = Math.max(3, Math.round(base + Math.sin(phase / 5 + seed) * 3)); // oscila
+      const arr: { c: string; flip: boolean }[] = [];
+      for (let i = 0; i < len; i++) arr.push({ c: GLYPHS[Math.floor(Math.random() * GLYPHS.length)], flip: Math.random() < 0.16 });
+      setChars(arr);
+    }, 70);
+    return () => window.clearInterval(id);
+  }, [seed]);
+  return (
+    <S.GlitchVal>
+      {chars.map((ch, i) => (ch.flip ? <S.Flip key={i}>{ch.c}</S.Flip> : <span key={i}>{ch.c}</span>))}
+    </S.GlitchVal>
+  );
+}
+
 type CaretAt = 'name' | 'kind' | 'row' | 'note' | 'done';
 
 // Card de anomalia/easter egg, "digitado" como um terminal (igual aos planetas).
@@ -94,7 +118,7 @@ export function AnomalyCard({ anomKey, lang, innerRef }: { anomKey: string; lang
             <PC.RowLabel>{it.label}</PC.RowLabel>
             <PC.Leader />
             {it.redact ? (
-              <S.Redacted $w={54 + ((i * 43) % 66)} />
+              <GlitchValue seed={i + 1} />
             ) : (
               <PC.RowValue $accent={it.accent}>
                 {rowText[i]}
