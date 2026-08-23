@@ -59,6 +59,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // controle manual: clicar no núcleo trava a rotação automática e libera o arraste
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
+  let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
   // alvo de clique no centro (invisível), dentro dos anéis
   const corePick = new THREE.Mesh(new THREE.SphereGeometry(20, 12, 12), new THREE.MeshBasicMaterial({ visible: false }));
   scene.add(corePick);
@@ -178,11 +179,19 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (moved) { moved = false; return; } // foi um arraste, não um clique
     if (lockedIdx < 0) {
       raycaster.setFromCamera(pointer, camera);
-      if (raycaster.intersectObject(corePick, false).length) { // clicou no núcleo: alterna manual
-        manual = !manual;
-        manualPhi = 0;
-        renderer.domElement.style.cursor = manual ? 'grab' : '';
-        opts.onManual?.(manual);
+      if (raycaster.intersectObject(corePick, false).length) { // clicou no núcleo
+        // contador (invisível) de cliques seguidos; zera se parar por ~3s.
+        // 100 cliques em sequência detonam a estrela.
+        const now = performance.now();
+        coreClicks = now - lastCoreClick < 3000 ? coreClicks + 1 : 1;
+        lastCoreClick = now;
+        if (coreClicks === 1) { // só o 1º clique alterna o manual (não pisca na sequência)
+          manual = !manual;
+          manualPhi = 0;
+          renderer.domElement.style.cursor = manual ? 'grab' : '';
+          opts.onManual?.(manual);
+        }
+        if (coreClicks >= 100 && !sun.state.exploding) { sun.detonate(); coreClicks = 0; }
         return;
       }
     }
@@ -199,7 +208,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), opts.bloom != null ? opts.bloom : 1.0, 0.85, 0.72);
+  let bloomBase = opts.bloom != null ? opts.bloom : 1.0;
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), bloomBase, 0.85, 0.72);
   composer.addPass(bloom);
 
   const onResize = () => {
@@ -241,11 +251,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     lastT = t;
 
     stars.update(t);
-    sun.update(t);
+    sun.update(t, dt);
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
-    updatePlanets(planets, dt, planetHover);
+    // após a detonação, a onda de choque destrói os planetas (menos Plutão)
+    const blastT = sun.state.exploding && sun.state.et > 2.1 ? sun.state.et - 2.1 : -1;
+    updatePlanets(planets, dt, planetHover, blastT);
     updateAnomalies(t);
     // rastreia na tela o objeto sob o cursor (planeta OU anomalia)
     const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
@@ -280,13 +292,22 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const phi = Math.max(0.25, Math.min(2.75, 1.35 + (manual ? manualPhi : sy * 0.2)));
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
+    // supernova: pico de bloom/exposição no flash + tremor de câmera
+    const sState = sun.state;
+    bloom.strength = bloomBase + sState.flash * 3.2;
+    renderer.toneMappingExposure = 1.1 + sState.flash * 1.6;
+    if (sState.shake > 0.001) {
+      camera.position.x += (Math.random() - 0.5) * sState.shake * 9;
+      camera.position.y += (Math.random() - 0.5) * sState.shake * 9;
+      camera.position.z += (Math.random() - 0.5) * sState.shake * 9;
+    }
     composer.render();
   }
   animate();
 
   return {
     setScroll(p: number) { scrollP = p; },
-    setBloom(v: number) { bloom.strength = v; },
+    setBloom(v: number) { bloomBase = v; },
     setFocus(f: number) { targetFocus = f; },
     startIntro() { introActive = true; },
     setLocked(i: number) {

@@ -10,6 +10,24 @@ export interface PlanetRt {
   omega: number;
   angle: number;
   spin: number;
+  key: string;
+  size: number;
+  pick: THREE.Mesh;
+  destroyAt: number; // tempo (s) após a detonação p/ ser atingido (Infinity = imune)
+  dead: boolean;
+  deadT: number;
+  fx: PlanetFx | null; // efeito de destruição (criado ao morrer)
+}
+
+interface PlanetFx {
+  group: THREE.Group;
+  flash: THREE.Sprite;
+  flashMat: THREE.SpriteMaterial;
+  pts: THREE.Points;
+  ptsMat: THREE.PointsMaterial;
+  positions: Float32Array;
+  dirs: Float32Array;
+  speeds: Float32Array;
 }
 
 // Escala/órbitas: casca = 1 UA = SHELL_R. Órbitas por log10(UA) espalhado num
@@ -139,6 +157,82 @@ const planetTexture = (key: string): THREE.Texture | null => {
   return null;
 };
 
+// ---------- Destruição do planeta (onda de choque da supernova) ----------
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const smooth = (a: number, b: number, x: number) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+let sparkTex: THREE.CanvasTexture | null = null;
+function sparkTexture() {
+  if (sparkTex) return sparkTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,240,210,0.65)');
+  g.addColorStop(1, 'rgba(255,240,210,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  sparkTex = new THREE.CanvasTexture(c);
+  return sparkTex;
+}
+
+// Detona um planeta: flash + detritos no lugar dele (fixos no pivot já parado).
+function killPlanet(p: PlanetRt) {
+  p.dead = true;
+  p.deadT = 0;
+  p.pick.layers.disableAll(); // não pode mais ser "hoverado"
+  const group = new THREE.Group();
+  group.position.copy(p.body.position); // local do pivot (planeta parado)
+  p.pivot.add(group);
+
+  const flashMat = new THREE.SpriteMaterial({ map: sparkTexture(), color: 0xffe6b0, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending });
+  const flash = new THREE.Sprite(flashMat);
+  flash.scale.setScalar(p.size * 6);
+  group.add(flash);
+
+  const N = 130;
+  const positions = new Float32Array(N * 3);
+  const dirs = new Float32Array(N * 3);
+  const speeds = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = Math.sqrt(1 - u * u);
+    dirs[i * 3] = rr * Math.cos(th); dirs[i * 3 + 1] = u; dirs[i * 3 + 2] = rr * Math.sin(th);
+    speeds[i] = p.size * (6 + Math.random() * 18);
+  }
+  const ptsGeo = new THREE.BufferGeometry();
+  ptsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const ptsMat = new THREE.PointsMaterial({ size: 2.4, map: sparkTexture(), color: 0xffd9a0, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false });
+  const pts = new THREE.Points(ptsGeo, ptsMat);
+  group.add(pts);
+
+  p.fx = { group, flash, flashMat, pts, ptsMat, positions, dirs, speeds };
+}
+
+// Anima o efeito de destruição: corpo encolhe, flash cresce e some, detritos voam.
+function animateBurst(p: PlanetRt) {
+  const fx = p.fx;
+  if (!fx) return;
+  const e = p.deadT;
+  // corpo some rápido
+  const shrink = 1 - smooth(0, 0.18, e);
+  p.body.scale.setScalar(Math.max(0.0001, shrink));
+  if (e > 0.2) p.body.visible = false;
+  // flash: cresce e esmaece
+  fx.flash.scale.setScalar(p.size * (6 + smooth(0, 0.5, e) * 10));
+  fx.flashMat.opacity = 0.95 * (1 - smooth(0.03, 0.5, e));
+  // detritos voam e esfriam
+  for (let i = 0; i < fx.speeds.length; i++) {
+    const d = fx.speeds[i] * e;
+    fx.positions[i * 3] = fx.dirs[i * 3] * d;
+    fx.positions[i * 3 + 1] = fx.dirs[i * 3 + 1] * d;
+    fx.positions[i * 3 + 2] = fx.dirs[i * 3 + 2] * d;
+  }
+  fx.pts.geometry.attributes.position.needsUpdate = true;
+  fx.ptsMat.opacity = 1 - smooth(0.5, 1.4, e);
+  fx.ptsMat.color.setRGB(1, 0.85 - 0.55 * clamp01(e / 1.1), 0.6 - 0.5 * clamp01(e / 1));
+}
+
 // Cria os planetas orbitando a estrela (na origem). Devolve os handles de
 // animação e as esferas de hit (pick) p/ o raycast do orquestrador.
 export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planetPick: THREE.Mesh[] } {
@@ -204,7 +298,9 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const pivot = new THREE.Group(); // gira em Y -> órbita circular no plano XZ (eclíptica)
     pivot.add(body);
     solar.add(pivot);
-    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12 });
+    // onda de choque atinge por distância (de dentro p/ fora); Plutão é longe demais
+    const destroyAt = p.key === 'plutao' ? Infinity : 0.1 + r / 150;
+    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null });
   });
 
   return { planets, planetPick };
@@ -212,8 +308,10 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
 
 // Avança as órbitas (kepleriano) e a rotação própria; congela o planeta sob o
 // cursor (planetHover) para leitura estável do card.
-export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number) {
+export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1) {
   planets.forEach((p, i) => {
+    if (p.dead) { p.deadT += dt; animateBurst(p); return; } // destruído: só anima o burst
+    if (blastT >= 0 && blastT >= p.destroyAt) { killPlanet(p); return; } // onda de choque chegou
     if (i !== planetHover) p.angle += p.omega * dt;
     p.pivot.rotation.y = p.angle;
     p.body.rotation.y += p.spin * dt;

@@ -473,6 +473,7 @@ export const ContactPrimary = styled.a`
   &::after { bottom: 4px; right: 4px; border-bottom-width: 1px; border-right-width: 1px; }
   &:hover {
     background: #ffe0a0;
+    color: ${INK}; /* mantém o texto escuro (senão o a:hover global o iguala ao fundo) */
     box-shadow: 0 0 26px rgba(255, 202, 112, 0.45);
   }
 `;
@@ -508,4 +509,52 @@ export const MetaItem = styled.span`
   align-items: center;
   gap: 6px;
   svg { color: rgba(255, 202, 112, 0.6); }
+`;
+
+/* ---- Dica secreta (arraste o card de Design Systems) ---- */
+export const SecretWrap = styled.div`
+  position: relative;
+`;
+
+/* Máscara: só mostra a nota na faixa já desocupada pelo card (largura = arraste),
+   evitando que a nota vaze por baixo do card translúcido. */
+export const SecretMask = styled.div`
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+`;
+
+export const SecretNote = styled.div`
+  width: 244px;
+  flex: none;
+  padding: 6px 20px;
+  font-family: 'Caveat', cursive;
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.18;
+  color: rgba(238, 232, 218, 0.82);
+  transform: rotate(-1.6deg);
+  text-wrap: pretty;
+`;
+
+export const DraggableCard = styled.div<{ $i?: number }>`
+  ${hudCard}
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+  animation: none; /* sem cardIn: o fill-mode sobreporia o transform do drag */
+  /* mesmo fundo dos outros cards (a nota fica escondida por opacity:0 em repouso) */
+  &:hover { transform: none; } /* mantém o glow do hudCard; o drag controla o transform */
+  &:active { cursor: grabbing; }
 `;

@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import {
   LuActivity,
   LuArrowLeft,
@@ -24,6 +25,46 @@ const META: Record<string, { pt: string; en: string }> = {
   servicos: { pt: 'CAPACIDADES', en: 'CAPABILITIES' },
   contato: { pt: 'CANAL ABERTO', en: 'OPEN CHANNEL' },
 };
+
+// Card de serviço "secreto": arraste-o de lado para revelar uma dica a lápis
+// (uma pista enigmática do easter egg da supernova).
+function SecretServiceCard({ name, desc, hint, i }: { name: string; desc: string; hint: string; i: number }) {
+  const MAX = 270; // arraste que revela a nota (~244px) por inteiro
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef(0);
+  const onDown = (e: React.PointerEvent) => {
+    setDragging(true);
+    start.current = e.clientX - dx;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setDx(Math.max(0, Math.min(MAX, e.clientX - start.current)));
+  };
+  const onUp = () => { setDragging(false); setDx(0); }; // solta -> volta ao lugar
+  return (
+    <S.SecretWrap>
+      <S.SecretMask style={{ width: `${dx}px`, transition: dragging ? 'none' : 'width 0.5s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+        <S.SecretNote>{hint}</S.SecretNote>
+      </S.SecretMask>
+      <S.DraggableCard
+        $i={i}
+        style={{ transform: `translateX(${dx}px)`, transition: dragging ? 'none' : 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)' }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+      >
+        <S.ServiceHead>
+          <S.ServiceIcon><LuZap size={17} /></S.ServiceIcon>
+          <S.ServiceName>{name}</S.ServiceName>
+        </S.ServiceHead>
+        <S.ServiceDesc>{desc}</S.ServiceDesc>
+      </S.DraggableCard>
+    </S.SecretWrap>
+  );
+}
 
 function Meta({ icon, label, count }: { icon: React.ReactNode; label: string; count?: number }) {
   return (
@@ -137,15 +178,27 @@ export function SectionPanel({
         {selId === 'servicos' && (
           <S.Stack>
             <Meta icon={<LuZap size={12} />} label={meta('servicos')} count={content.services.length} />
-            {content.services.map((sv, i) => (
-              <S.ServiceCard key={sv.name} $i={i + 1}>
-                <S.ServiceHead>
-                  <S.ServiceIcon><LuZap size={17} /></S.ServiceIcon>
-                  <S.ServiceName>{sv.name}</S.ServiceName>
-                </S.ServiceHead>
-                <S.ServiceDesc>{sv.desc}</S.ServiceDesc>
-              </S.ServiceCard>
-            ))}
+            {content.services.map((sv, i) =>
+              sv.name === 'Design systems & UI' ? (
+                <SecretServiceCard
+                  key={sv.name}
+                  name={sv.name}
+                  desc={sv.desc}
+                  i={i + 1}
+                  hint={pt
+                    ? 'psiu… cem batidas no coração da estrela e ela não aguenta ser vista. — G.'
+                    : "psst… a hundred knocks on the star's heart and it can't bear to be seen. — G."}
+                />
+              ) : (
+                <S.ServiceCard key={sv.name} $i={i + 1}>
+                  <S.ServiceHead>
+                    <S.ServiceIcon><LuZap size={17} /></S.ServiceIcon>
+                    <S.ServiceName>{sv.name}</S.ServiceName>
+                  </S.ServiceHead>
+                  <S.ServiceDesc>{sv.desc}</S.ServiceDesc>
+                </S.ServiceCard>
+              ),
+            )}
           </S.Stack>
         )}
 
