@@ -9,11 +9,10 @@ import {
   LuMail,
   LuMapPin,
   LuOrbit,
-  LuPhone,
   LuRadar,
   LuZap,
 } from 'react-icons/lu';
-import { FaGithub, FaLinkedinIn } from 'react-icons/fa6';
+import { FaGithub, FaLinkedinIn, FaWhatsapp } from 'react-icons/fa6';
 import { CONTACT, type Content, type Lang } from '../data/content';
 import * as S from './SectionPanel.styles';
 
@@ -218,12 +217,14 @@ export function SectionPanel({
                 <S.ContactSecondary href={CONTACT.github} target="_blank" rel="noreferrer">
                   <FaGithub size={13} /> GitHub
                 </S.ContactSecondary>
+                <S.ContactSecondary href={CONTACT.whatsapp} target="_blank" rel="noreferrer">
+                  <FaWhatsapp size={14} /> WhatsApp
+                </S.ContactSecondary>
               </S.ContactRow>
             </S.ContactActions>
             <S.ContactMeta $i={3}>
               <S.MetaItem><LuMapPin size={13} /> {CONTACT.location}</S.MetaItem>
               <S.MetaItem><LuActivity size={13} /> {content.remote}</S.MetaItem>
-              <S.MetaItem><LuPhone size={13} /> {CONTACT.phone}</S.MetaItem>
             </S.ContactMeta>
           </S.Stack>
         )}

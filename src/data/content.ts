@@ -267,6 +267,7 @@ export const CONTACT = {
   email: 'gabrielfraygarandy@gmail.com',
   linkedin: 'https://www.linkedin.com/in/gabrielfray/',
   github: 'https://github.com/GabrielFray',
+  whatsapp: 'https://wa.me/5519997072653', // (19) 99707-2653
   phone: '(19) 99707-2653',
   location: 'São Paulo',
 };
