@@ -1,21 +1,59 @@
-import { LuArrowLeft, LuOrbit } from 'react-icons/lu';
-import { CONTACT, type Content } from '../data/content';
+import {
+  LuActivity,
+  LuArrowLeft,
+  LuArrowUpRight,
+  LuBriefcase,
+  LuChevronRight,
+  LuLayers,
+  LuMail,
+  LuMapPin,
+  LuOrbit,
+  LuPhone,
+  LuRadar,
+  LuZap,
+} from 'react-icons/lu';
+import { FaGithub, FaLinkedinIn } from 'react-icons/fa6';
+import { CONTACT, type Content, type Lang } from '../data/content';
 import * as S from './SectionPanel.styles';
 
-// Painel lateral com o conteúdo da seção selecionada.
+const META: Record<string, { pt: string; en: string }> = {
+  sobre: { pt: 'PERFIL', en: 'PROFILE' },
+  projetos: { pt: 'REGISTROS', en: 'ENTRIES' },
+  experiencia: { pt: 'TRAJETÓRIA', en: 'TRAJECTORY' },
+  stack: { pt: 'ARSENAL', en: 'ARSENAL' },
+  servicos: { pt: 'CAPACIDADES', en: 'CAPABILITIES' },
+  contato: { pt: 'CANAL ABERTO', en: 'OPEN CHANNEL' },
+};
+
+function Meta({ icon, label, count }: { icon: React.ReactNode; label: string; count?: number }) {
+  return (
+    <S.SectionMeta $i={0}>
+      {icon}
+      {label}
+      {count != null && ` · ${String(count).padStart(2, '0')}`}
+    </S.SectionMeta>
+  );
+}
+
+// Painel lateral (dossiê HUD) com o conteúdo da seção selecionada.
 export function SectionPanel({
   selId,
   content,
+  lang,
   panelPath,
   backLabel,
   onClose,
 }: {
   selId: string;
   content: Content;
+  lang: Lang;
   panelPath: string;
   backLabel: string;
   onClose: () => void;
 }) {
+  const pt = lang === 'pt';
+  const meta = (id: string) => (pt ? META[id].pt : META[id].en);
+
   return (
     <S.Aside>
       <S.Header>
@@ -24,13 +62,16 @@ export function SectionPanel({
       </S.Header>
 
       <S.Body>
+        {/* remonta ao trocar de seção -> as animações de entrada tocam de novo */}
+        <div key={selId} style={{ display: 'contents' }}>
         {selId === 'sobre' && (
           <S.Stack $gap={18}>
-            <S.AboutLead>{content.aboutText}</S.AboutLead>
-            <S.AboutText>{content.aboutText2}</S.AboutText>
+            <Meta icon={<LuActivity size={12} />} label={meta('sobre')} />
+            <S.AboutLead $i={1}>{content.aboutText}</S.AboutLead>
+            <S.AboutText $i={2}>{content.aboutText2}</S.AboutText>
             <S.Chips>
-              {[`3+ ${content.yearsLabel}`, 'SaaS B2B', `Sumaré / SP · ${content.remote}`].map((chip) => (
-                <S.Chip key={chip}>{chip}</S.Chip>
+              {[`3+ ${content.yearsLabel}`, 'SaaS B2B', `Sumaré / SP · ${content.remote}`].map((chip, i) => (
+                <S.Chip key={chip} $i={3 + i}>{chip}</S.Chip>
               ))}
             </S.Chips>
           </S.Stack>
@@ -38,9 +79,14 @@ export function SectionPanel({
 
         {selId === 'projetos' && (
           <S.Stack>
-            {content.projects.map((p) => (
-              <S.ProjectCard key={p.name} href={p.link} target="_blank" rel="noreferrer">
-                <S.Tag>{p.tag}</S.Tag>
+            <Meta icon={<LuRadar size={12} />} label={meta('projetos')} count={content.projects.length} />
+            {content.projects.map((p, i) => (
+              <S.ProjectCard key={p.name} href={p.link} target="_blank" rel="noreferrer" $i={i + 1}>
+                <S.CardIndex>{String(i + 1).padStart(2, '0')}</S.CardIndex>
+                <S.CardTopRow>
+                  <S.Tag>{p.tag}</S.Tag>
+                  <S.Launch><LuArrowUpRight size={16} /></S.Launch>
+                </S.CardTopRow>
                 <S.CardName>{p.name}</S.CardName>
                 <S.CardDesc>{p.desc}</S.CardDesc>
                 <S.CardStack>{p.stack}</S.CardStack>
@@ -50,64 +96,85 @@ export function SectionPanel({
         )}
 
         {selId === 'experiencia' && (
-          <S.Stack>
-            {content.jobs.map((j) => (
-              <S.InfoCard key={j.company + j.period}>
-                <S.JobHead>
-                  <S.JobRole>
-                    {j.role} · <span>{j.company}</span>
-                  </S.JobRole>
-                  <S.JobPeriod>{j.period}</S.JobPeriod>
-                </S.JobHead>
-                <S.JobMode>{j.mode}</S.JobMode>
-                <S.JobDesc>{j.desc}</S.JobDesc>
-              </S.InfoCard>
-            ))}
-          </S.Stack>
+          <>
+            <Meta icon={<LuBriefcase size={12} />} label={meta('experiencia')} count={content.jobs.length} />
+            <S.Timeline>
+              {content.jobs.map((j, i) => (
+                <S.TimelineItem key={j.company + j.period}>
+                  <S.Node $i={i + 1} />
+                  <S.JobCard $i={i + 1}>
+                    <S.JobHead>
+                      <S.JobRole>
+                        {j.role} · <span>{j.company}</span>
+                      </S.JobRole>
+                      <S.JobPeriod>{j.period}</S.JobPeriod>
+                    </S.JobHead>
+                    <S.JobMode>{j.mode}</S.JobMode>
+                    <S.JobDesc>{j.desc}</S.JobDesc>
+                  </S.JobCard>
+                </S.TimelineItem>
+              ))}
+            </S.Timeline>
+          </>
         )}
 
         {selId === 'stack' && (
           <S.Stack $gap={18}>
-            {content.stacks.map((s) => (
-              <div key={s.group}>
-                <S.StackGroupLabel>{s.group}</S.StackGroupLabel>
+            <Meta icon={<LuLayers size={12} />} label={meta('stack')} count={content.stacks.length} />
+            {content.stacks.map((s, gi) => (
+              <S.StackGroup key={s.group} $i={gi + 1}>
+                <S.StackGroupLabel><LuChevronRight size={13} /> {s.group}</S.StackGroupLabel>
                 <S.TagRow>
-                  {s.items.map((it) => (
-                    <S.StackTag key={it}>{it}</S.StackTag>
+                  {s.items.map((it, i) => (
+                    <S.StackTag key={it} $i={gi + 1 + i * 0.4}>{it}</S.StackTag>
                   ))}
                 </S.TagRow>
-              </div>
+              </S.StackGroup>
             ))}
           </S.Stack>
         )}
 
         {selId === 'servicos' && (
           <S.Stack>
-            {content.services.map((sv) => (
-              <S.InfoCard key={sv.name}>
-                <S.ServiceName>{sv.name}</S.ServiceName>
-                <S.JobDesc>{sv.desc}</S.JobDesc>
-              </S.InfoCard>
+            <Meta icon={<LuZap size={12} />} label={meta('servicos')} count={content.services.length} />
+            {content.services.map((sv, i) => (
+              <S.ServiceCard key={sv.name} $i={i + 1}>
+                <S.ServiceHead>
+                  <S.ServiceIcon><LuZap size={17} /></S.ServiceIcon>
+                  <S.ServiceName>{sv.name}</S.ServiceName>
+                </S.ServiceHead>
+                <S.ServiceDesc>{sv.desc}</S.ServiceDesc>
+              </S.ServiceCard>
             ))}
           </S.Stack>
         )}
 
         {selId === 'contato' && (
           <S.Stack $gap={18} $alignStart>
+            <Meta icon={<LuActivity size={12} />} label={meta('contato')} />
             <S.ContactHead>{content.contactHead}</S.ContactHead>
-            <S.ContactSub>{content.contactSub}</S.ContactSub>
-            <S.ContactActions>
-              <S.ContactPrimary href={`mailto:${CONTACT.email}`}>{CONTACT.email}</S.ContactPrimary>
+            <S.ContactSub $i={1}>{content.contactSub}</S.ContactSub>
+            <S.ContactActions $i={2}>
+              <S.ContactPrimary href={`mailto:${CONTACT.email}`}>
+                <LuMail size={16} /> {CONTACT.email}
+              </S.ContactPrimary>
               <S.ContactRow>
-                <S.ContactSecondary href={CONTACT.linkedin} target="_blank" rel="noreferrer">LinkedIn</S.ContactSecondary>
-                <S.ContactSecondary href={CONTACT.github} target="_blank" rel="noreferrer">GitHub</S.ContactSecondary>
+                <S.ContactSecondary href={CONTACT.linkedin} target="_blank" rel="noreferrer">
+                  <FaLinkedinIn size={13} /> LinkedIn
+                </S.ContactSecondary>
+                <S.ContactSecondary href={CONTACT.github} target="_blank" rel="noreferrer">
+                  <FaGithub size={13} /> GitHub
+                </S.ContactSecondary>
               </S.ContactRow>
             </S.ContactActions>
-            <S.ContactMeta>
-              {CONTACT.location} · {content.remote} · {CONTACT.phone}
+            <S.ContactMeta $i={3}>
+              <S.MetaItem><LuMapPin size={13} /> {CONTACT.location}</S.MetaItem>
+              <S.MetaItem><LuActivity size={13} /> {content.remote}</S.MetaItem>
+              <S.MetaItem><LuPhone size={13} /> {CONTACT.phone}</S.MetaItem>
             </S.ContactMeta>
           </S.Stack>
         )}
+        </div>
       </S.Body>
     </S.Aside>
   );

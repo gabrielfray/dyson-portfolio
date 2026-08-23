@@ -119,7 +119,7 @@ export default function App() {
       />
 
       {focused && selId && (
-        <SectionPanel selId={selId} content={content} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
+        <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
       )}
 
       {hoverPlanet !== null && (
