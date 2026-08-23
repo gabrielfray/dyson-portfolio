@@ -10,6 +10,8 @@ export const GlobalStyle = createGlobalStyle`
     color: ${CREAM};
     font-family: ${SANS};
     overflow: hidden;
+    overscroll-behavior: none; /* sem pull-to-refresh/bounce no mobile */
+    -webkit-tap-highlight-color: transparent;
   }
   #root { height: 100%; }
   a { color: ${AMBER}; text-decoration: none; }

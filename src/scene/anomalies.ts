@@ -29,7 +29,7 @@ const addPick = (body: THREE.Object3D, key: string, radius: number) => {
 
 // Objetos especiais / easter eggs espalhados bem longe (achados no zoom out).
 // Cada um: um corpo visual + uma esfera de hit invisível p/ o raycast.
-export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; update: (t: number) => void } {
+export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { anomalies: Anomaly[]; update: (t: number) => void } {
   const anomalies: Anomaly[] = [];
   const updaters: ((t: number) => void)[] = [];
 
@@ -145,7 +145,7 @@ export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; upd
   // --- Voyager 1 (sonda) — modelagem detalhada ---
   {
     const g = new THREE.Group();
-    g.position.set(1080, 600, 940); // bem longe, na borda superior direita
+    g.position.set(1080, 600, 940); // posição inicial (o updater a coloca em órbita)
 
     const gold = new THREE.MeshStandardMaterial({ color: 0xb8a463, metalness: 0.65, roughness: 0.45, emissive: 0x3a3016, emissiveIntensity: 0.75 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x2b2b30, metalness: 0.6, roughness: 0.5, emissive: 0x111114, emissiveIntensity: 0.6 });
@@ -235,8 +235,25 @@ export function createAnomalies(scene: THREE.Scene): { anomalies: Anomaly[]; upd
     const pick = addPick(g, 'voyager', 22);
     pick.position.z = -1;
     anomalies.push({ key: 'voyager', body: g, pick });
+    // órbita "de frente" pra câmera: plano perpendicular à linha câmera->centro,
+    // então ela circula sempre pela BORDA da tela, nunca sobre o sol (em qualquer
+    // ângulo). Lenta e num raio grande -> só aparece dando bastante zoom out.
+    const orbitR = 620;
+    const camDir = new THREE.Vector3();
+    const u = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    const UP = new THREE.Vector3(0, 1, 0);
+    const ALT = new THREE.Vector3(1, 0, 0);
     updaters.push((t) => {
-      g.rotation.set(t * 0.1, t * 0.18, t * 0.05);
+      const a = t * 0.025; // bem lenta (~250s por volta)
+      camDir.copy(camera.position);
+      if (camDir.lengthSq() < 1) camDir.set(0, 0, 1);
+      camDir.normalize();
+      u.crossVectors(Math.abs(camDir.y) > 0.92 ? ALT : UP, camDir).normalize();
+      v.crossVectors(camDir, u).normalize();
+      const c = Math.cos(a) * orbitR, s = Math.sin(a) * orbitR;
+      g.position.set(u.x * c + v.x * s, u.y * c + v.y * s, u.z * c + v.z * s);
+      g.rotation.set(t * 0.08, t * 0.14, t * 0.04);
     });
   }
 

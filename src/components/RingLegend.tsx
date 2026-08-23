@@ -18,6 +18,16 @@ const Bar = styled.div<{ $width: string }>`
   box-sizing: border-box;
   animation: fadeIn 2s ease 4s both;
   transition: width 1.1s cubic-bezier(0.22, 0.61, 0.36, 1);
+  @media (max-width: 640px) {
+    bottom: max(12px, env(safe-area-inset-bottom));
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: safe center;
+    padding: 0 12px 4px;
+    scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+  }
 `;
 
 const LegendBtn = styled.button<{ $selected: boolean }>`
@@ -25,6 +35,12 @@ const LegendBtn = styled.button<{ $selected: boolean }>`
   font-size: 11px;
   padding: 9px 17px;
   ${(p) => p.$selected && css`${hudButtonActive}`}
+  @media (max-width: 640px) {
+    font-size: 10px;
+    padding: 8px 11px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 `;
 
 // Barra de legendas dos anéis (navegação por seção).

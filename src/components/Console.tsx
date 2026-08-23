@@ -11,6 +11,12 @@ const Wrap = styled.div`
   pointer-events: none;
   font-family: ${MONO};
   animation: fadeIn 1.4s ease 0.4s both;
+  @media (max-width: 560px) {
+    top: max(58px, calc(env(safe-area-inset-top) + 44px));
+    left: 14px;
+    width: min(300px, 74vw);
+    font-size: 12px;
+  }
 `;
 
 const Header = styled.div`

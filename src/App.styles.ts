@@ -28,6 +28,14 @@ export const ManualHint = styled.div`
     letter-spacing: 0.08em;
     text-transform: none;
   }
+  @media (max-width: 560px) {
+    top: max(10px, env(safe-area-inset-top));
+    max-width: calc(100vw - 24px);
+    font-size: 10px;
+    padding: 6px 12px;
+    gap: 6px;
+    span { display: none; } /* no toque, só o rótulo (a dica de mouse não se aplica) */
+  }
 `;
 
 export const Root = styled.div`

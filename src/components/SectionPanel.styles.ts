@@ -18,6 +18,7 @@ const hudCard = css<{ $i?: number }>`
   border-radius: 2px;
   padding: 18px 22px 18px 24px;
   transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+  @media (max-width: 560px) { padding: 15px 16px 15px 18px; }
 
   &::before { /* barra de acento */
     content: '';
@@ -62,6 +63,7 @@ export const Aside = styled.aside`
   border-left: 1px solid rgba(255, 202, 112, 0.35);
   backdrop-filter: blur(18px);
   animation: slideIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @media (max-width: 560px) { width: 100vw; border-left: none; } /* cobre a tela toda no mobile */
 `;
 
 export const Header = styled.div`
@@ -69,8 +71,12 @@ export const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 26px 34px;
   border-bottom: 1px solid rgba(255, 202, 112, 0.18);
+  @media (max-width: 560px) {
+    padding: max(16px, env(safe-area-inset-top)) 16px 14px;
+  }
   &::after { /* linha viva que "desenha" sob o cabeçalho */
     content: '';
     position: absolute;
@@ -92,9 +98,15 @@ export const Path = styled.div`
   font-size: 13px;
   letter-spacing: 0.3em;
   color: ${AMBER};
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   svg {
+    flex: none;
     animation: growX 0.6s ease both;
   }
+  @media (max-width: 560px) { font-size: 11px; letter-spacing: 0.16em; }
 `;
 
 export const CloseBtn = styled.button`
@@ -102,6 +114,9 @@ export const CloseBtn = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  flex: none;
+  white-space: nowrap;
+  @media (max-width: 560px) { font-size: 10px; padding: 7px 10px; }
   font-size: 11px;
   padding: 8px 16px;
 `;
@@ -111,6 +126,10 @@ export const Body = styled.div`
   overflow-y: auto;
   overflow-x: hidden;
   padding: 30px 34px 40px;
+  -webkit-overflow-scrolling: touch;
+  @media (max-width: 560px) {
+    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+  }
 `;
 
 export const Stack = styled.div<{ $gap?: number; $alignStart?: boolean }>`

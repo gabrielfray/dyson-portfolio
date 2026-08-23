@@ -127,7 +127,7 @@ export default function App() {
       <GlobalStyle />
       <S.CanvasMount ref={canvasRef} $shift={canvasShift} />
 
-      <LangToggle label={content.langLabel} onClick={toggleLang} />
+      {!focused && <LangToggle label={content.langLabel} onClick={toggleLang} />}
 
       {started && manual && (
         <S.ManualHint>

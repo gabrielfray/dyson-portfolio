@@ -8,6 +8,9 @@ export const Overlay = styled.div<{ $leaving: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  /* deixa folga p/ o botão de idioma e respeita notch/safe-area */
+  padding: max(70px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
   /* opaco: esconde por completo a cena/fundo até o "iniciar" */
   background: radial-gradient(circle at 50% 45%, #0a0805, #030208 80%);
   animation: fadeIn 0.5s ease both;
@@ -30,6 +33,9 @@ export const Overlay = styled.div<{ $leaving: boolean }>`
 export const Terminal = styled.div`
   position: relative;
   width: min(660px, 92vw);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(255, 202, 112, 0.3);
   border-radius: 3px;
   background: rgba(6, 5, 10, 0.85);
@@ -84,9 +90,17 @@ export const Dots = styled.span`
 export const LogBody = styled.div`
   padding: 20px 22px 22px;
   min-height: 340px;
+  flex: 1;
+  overflow-y: auto;
   font-size: 12.5px;
   line-height: 1.75;
   color: ${CREAM};
+  @media (max-width: 560px) {
+    padding: 14px 14px 16px;
+    min-height: 0;
+    font-size: 11px;
+    line-height: 1.6;
+  }
 `;
 
 export const Line = styled.div`

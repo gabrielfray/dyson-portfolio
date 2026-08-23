@@ -30,6 +30,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
+  renderer.domElement.style.touchAction = 'none'; // gestos (girar/pinça) sem rolar a página
   container.appendChild(renderer.domElement);
 
   // Conteúdo da cena (cada módulo se adiciona à scene e devolve seus handles).
@@ -38,7 +39,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const sun = createSun(scene);
   const { dyson, shell, rings } = createDysonStructure(scene);
   const { planets, planetPick } = createPlanets(scene);
-  const { anomalies, update: updateAnomalies } = createAnomalies(scene);
+  const { anomalies, update: updateAnomalies } = createAnomalies(scene, camera);
   const anomalyPick = anomalies.map((a) => a.pick);
 
   // ---------- Interatividade: anéis como portais de navegação ----------
@@ -60,6 +61,9 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
+  // multi-touch: mapa de dedos ativos + estado da pinça (zoom)
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinching = false, pinchDist0 = 0, pinchZoom0 = 0;
   // alvo de clique no centro (invisível), dentro dos anéis
   const corePick = new THREE.Mesh(new THREE.SphereGeometry(20, 12, 12), new THREE.MeshBasicMaterial({ visible: false }));
   scene.add(corePick);
@@ -96,7 +100,24 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     }
   };
   const onPointerMovePick = (e: PointerEvent) => {
-    if (dragging) { // arrastando no modo manual: gira a câmera
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinching && pointers.size >= 2) { // pinça (2 dedos) -> zoom
+      const p = [...pointers.values()];
+      const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      userZoom = Math.max(-18, Math.min(1150, pinchZoom0 + (pinchDist0 - d) * 2.2));
+      moved = true;
+      return;
+    }
+    // toque de 1 dedo que se move -> passa a girar (sem precisar do modo manual)
+    if (!dragging && e.pointerType === 'touch' && pointers.size === 1 && lockedIdx < 0 &&
+        Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6) {
+      dragging = true;
+      manual = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      opts.onManual?.(true);
+    }
+    if (dragging) { // arrastando: gira a câmera
       const dx = e.clientX - lastX, dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -156,29 +177,44 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   renderer.domElement.addEventListener('pointermove', onPointerMovePick);
 
   const onPointerDown = (e: PointerEvent) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     downX = e.clientX;
     downY = e.clientY;
     moved = false;
-    if (manual) {
+    if (pointers.size === 2) { // 2 dedos -> inicia pinça (zoom), cancela arraste
+      const p = [...pointers.values()];
+      pinchDist0 = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      pinchZoom0 = userZoom;
+      pinching = true;
+      dragging = false;
+      return;
+    }
+    if (manual) { // mouse em modo manual: já começa a arrastar
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
       renderer.domElement.style.cursor = 'grabbing';
     }
   };
-  const onPointerUp = () => {
-    if (dragging) {
+  const onPointerUp = (e: PointerEvent) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinching = false;
+    if (pointers.size === 0 && dragging) {
       dragging = false;
       renderer.domElement.style.cursor = manual ? 'grab' : '';
     }
   };
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   addEventListener('pointerup', onPointerUp);
+  addEventListener('pointercancel', onPointerUp);
 
-  const onClickPick = () => {
-    if (moved) { moved = false; return; } // foi um arraste, não um clique
+  const onClickPick = (e: MouseEvent) => {
+    if (moved) { moved = false; return; } // foi um arraste/pinça, não um clique
+    // raycast a partir do ponto clicado (funciona no toque, que não tem hover)
+    pointer.x = (e.clientX / innerWidth) * 2 - 1;
+    pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
     if (lockedIdx < 0) {
-      raycaster.setFromCamera(pointer, camera);
       if (raycaster.intersectObject(corePick, false).length) { // clicou no núcleo
         // contador (invisível) de cliques seguidos; zera se parar por ~3s.
         // 100 cliques em sequência detonam a estrela.
@@ -194,15 +230,38 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         if (coreClicks >= 100 && !sun.state.exploding) { sun.detonate(); coreClicks = 0; }
         return;
       }
+      // planeta -> revela o card (no toque não há hover)
+      const ph = planetPick.length ? raycaster.intersectObjects(planetPick, false) : [];
+      if (ph.length) {
+        const idx = ph[0].object.userData.planetIndex as number;
+        clearAnomalyHover();
+        if (planetHover !== idx) { planetHover = idx; opts.onPlanetHover?.(idx); }
+        return;
+      }
+      // anomalia -> revela o card + dispara o efeito sonoro
+      const ah = anomalyPick.length ? raycaster.intersectObjects(anomalyPick, false) : [];
+      if (ah.length) {
+        const key = ah[0].object.userData.anomalyKey as string;
+        const idx = anomalies.findIndex((a) => a.key === key);
+        clearPlanetHover();
+        if (anomalyHover !== idx) { anomalyHover = idx; opts.onAnomalyHover?.(key); }
+        opts.onAnomalyClick?.(key);
+        return;
+      }
+      // anel -> abre a seção
+      if (scrollP <= 0.45 && pickMeshes.length) {
+        const hits = raycaster.intersectObjects(pickMeshes, false);
+        if (hits.length) {
+          const ri = hits[0].object.userData.ringIndex as number;
+          swoop = 1;
+          opts.onSelect?.(ud(rings[ri]).section!, ri);
+          return;
+        }
+      }
     }
-    if (anomalyHover >= 0) { // clicou num easter egg -> efeito sonoro/etc.
-      opts.onAnomalyClick?.(anomalies[anomalyHover].key);
-      return;
-    }
-    if (hovered >= 0 && scrollP <= 0.45 && lockedIdx < 0) {
-      swoop = 1;
-      if (opts.onSelect) opts.onSelect(ud(rings[hovered]).section!, hovered);
-    }
+    // tap no vazio: fecha os cards de planeta/anomalia
+    clearPlanetHover();
+    clearAnomalyHover();
   };
   renderer.domElement.addEventListener('click', onClickPick);
 
@@ -347,6 +406,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       renderer.domElement.removeEventListener('click', onClickPick);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       removeEventListener('pointerup', onPointerUp);
+      removeEventListener('pointercancel', onPointerUp);
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
