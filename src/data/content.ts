@@ -123,7 +123,7 @@ export const CONTACT = {
   linkedin: 'https://www.linkedin.com/in/gabrielfray/',
   github: 'https://github.com/GabrielFray',
   phone: '(19) 99707-2653',
-  location: 'Sumaré / São Paulo',
+  location: 'São Paulo',
 };
 
 // ---------- Sistema solar: dados reais dos planetas ----------

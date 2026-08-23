@@ -70,7 +70,7 @@ export function SectionPanel({
             <S.AboutLead $i={1}>{content.aboutText}</S.AboutLead>
             <S.AboutText $i={2}>{content.aboutText2}</S.AboutText>
             <S.Chips>
-              {[`3+ ${content.yearsLabel}`, 'SaaS B2B', `Sumaré / SP · ${content.remote}`].map((chip, i) => (
+              {[`3+ ${content.yearsLabel}`, 'SaaS B2B', `São Paulo · ${content.remote}`].map((chip, i) => (
                 <S.Chip key={chip} $i={3 + i}>{chip}</S.Chip>
               ))}
             </S.Chips>
