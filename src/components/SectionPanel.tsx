@@ -1,3 +1,4 @@
+import { LuArrowLeft, LuOrbit } from 'react-icons/lu';
 import { CONTACT, type Content } from '../data/content';
 import * as S from './SectionPanel.styles';
 
@@ -18,8 +19,8 @@ export function SectionPanel({
   return (
     <S.Aside>
       <S.Header>
-        <S.Path>◉ {panelPath}</S.Path>
-        <S.CloseBtn onClick={onClose}>✕ {backLabel}</S.CloseBtn>
+        <S.Path><LuOrbit size={15} /> {panelPath}</S.Path>
+        <S.CloseBtn onClick={onClose}><LuArrowLeft size={14} /> {backLabel}</S.CloseBtn>
       </S.Header>
 
       <S.Body>

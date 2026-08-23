@@ -26,6 +26,9 @@ export const Header = styled.div`
 `;
 
 export const Path = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   font-family: ${MONO};
   font-size: 13px;
   letter-spacing: 0.3em;
@@ -34,6 +37,9 @@ export const Path = styled.div`
 
 export const CloseBtn = styled.button`
   ${hudButton}
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 11px;
   padding: 8px 16px;
 `;
