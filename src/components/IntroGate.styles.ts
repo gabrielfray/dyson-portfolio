@@ -8,7 +8,8 @@ export const Overlay = styled.div<{ $leaving: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 50%, rgba(10, 7, 3, 0.55), rgba(0, 0, 0, 0.92) 80%);
+  /* opaco: esconde por completo a cena/fundo até o "iniciar" */
+  background: radial-gradient(circle at 50% 45%, #0a0805, #030208 80%);
   animation: fadeIn 0.5s ease both;
   /* scanlines de CRT */
   &::after {
