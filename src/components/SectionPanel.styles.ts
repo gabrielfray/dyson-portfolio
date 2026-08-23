@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 import { AMBER, CREAM, INK, MONO } from '../styles/theme';
+import { hudButton } from '../styles/hud';
 
 export const Aside = styled.aside`
   position: fixed;
@@ -32,18 +33,9 @@ export const Path = styled.div`
 `;
 
 export const CloseBtn = styled.button`
-  background: transparent;
-  border: 1px solid rgba(255, 202, 112, 0.4);
-  color: ${AMBER};
-  font-family: ${MONO};
+  ${hudButton}
   font-size: 11px;
-  letter-spacing: 0.12em;
-  padding: 7px 16px;
-  border-radius: 99px;
-  cursor: pointer;
-  &:hover {
-    background: rgba(255, 202, 112, 0.15);
-  }
+  padding: 8px 16px;
 `;
 
 export const Body = styled.div`
@@ -226,16 +218,43 @@ export const ContactActions = styled.div`
 `;
 
 export const ContactPrimary = styled.a`
+  position: relative;
   padding: 14px 24px;
-  border-radius: 12px;
+  border-radius: 1px;
   background: ${AMBER};
   color: ${INK};
+  font-family: ${MONO};
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
   text-align: center;
+  box-shadow: 0 0 18px rgba(255, 202, 112, 0.25);
+  transition: background 0.2s, box-shadow 0.2s;
+  /* colchetes de canto em tom escuro (contraste com o preenchimento âmbar) */
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border: 0 solid rgba(18, 16, 10, 0.55);
+  }
+  &::before {
+    top: 4px;
+    left: 4px;
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  &::after {
+    bottom: 4px;
+    right: 4px;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+  }
   &:hover {
     background: #ffe0a0;
     color: ${INK};
+    box-shadow: 0 0 26px rgba(255, 202, 112, 0.45);
   }
 `;
 
@@ -245,11 +264,10 @@ export const ContactRow = styled.div`
 `;
 
 export const ContactSecondary = styled.a`
+  ${hudButton}
   flex: 1;
   padding: 13px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 202, 112, 0.5);
-  font-size: 14px;
+  font-size: 12px;
   text-align: center;
 `;
 

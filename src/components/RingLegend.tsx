@@ -1,5 +1,5 @@
-import styled from 'styled-components';
-import { AMBER, MONO } from '../styles/theme';
+import styled, { css } from 'styled-components';
+import { hudButton, hudButtonActive } from '../styles/hud';
 import type { Section } from '../scene/dysonScene';
 import type { Lang } from '../data/content';
 
@@ -21,22 +21,10 @@ const Bar = styled.div<{ $width: string }>`
 `;
 
 const LegendBtn = styled.button<{ $selected: boolean }>`
-  background: ${(p) => (p.$selected ? 'rgba(255,202,112,.18)' : 'rgba(6,5,10,.6)')};
-  border: 1px solid ${(p) => (p.$selected ? 'rgba(255,202,112,.8)' : 'rgba(238,232,218,.2)')};
-  color: ${(p) => (p.$selected ? AMBER : 'rgba(238,232,218,.7)')};
-  font-family: ${MONO};
+  ${hudButton}
   font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 8px 16px;
-  border-radius: 99px;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: all 0.25s;
-  &:hover {
-    border-color: rgba(255, 202, 112, 0.8);
-    color: ${AMBER};
-  }
+  padding: 9px 17px;
+  ${(p) => p.$selected && css`${hudButtonActive}`}
 `;
 
 // Barra de legendas dos anéis (navegação por seção).
