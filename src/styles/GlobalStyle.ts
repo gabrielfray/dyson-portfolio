@@ -52,4 +52,14 @@ export const GlobalStyle = createGlobalStyle`
     30% { opacity: 0.4; }
     45%, 100% { opacity: 1; }
   }
+
+  /* Portão de inicialização: warp out ao entrar + pulso do botão CTA. */
+  @keyframes gateOut {
+    from { opacity: 1; transform: scale(1); filter: blur(0); }
+    to { opacity: 0; transform: scale(1.18); filter: blur(6px); }
+  }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 16px rgba(255, 202, 112, 0.3); }
+    50% { box-shadow: 0 0 38px rgba(255, 202, 112, 0.68); }
+  }
 `;

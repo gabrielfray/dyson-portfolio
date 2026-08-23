@@ -71,6 +71,29 @@ export function termDefs(lang: Lang): TermDef[] {
   ];
 }
 
+export interface IntroText {
+  protocol: string;
+  title: string;
+  subtitle: string;
+  boot: string[];
+  ok: string;
+  start: string;
+}
+
+export function getIntro(lang: Lang): IntroText {
+  const pt = lang === 'pt';
+  return {
+    protocol: pt ? 'PROTOCOLO DE INICIALIZAÇÃO' : 'BOOT SEQUENCE',
+    title: pt ? 'ESFERA DE DYSON' : 'DYSON SPHERE',
+    subtitle: 'GABRIEL FRAY · PORTFÓLIO',
+    boot: pt
+      ? ['núcleo estelar', 'anéis orbitais', 'sistema solar', 'campo estelar']
+      : ['stellar core', 'orbital rings', 'solar system', 'starfield'],
+    ok: 'OK',
+    start: pt ? 'INICIAR PROJETO' : 'START PROJECT',
+  };
+}
+
 export function getContent(lang: Lang): Content {
   const pt = lang === 'pt';
   const T = (a: string, b: string) => (pt ? a : b);

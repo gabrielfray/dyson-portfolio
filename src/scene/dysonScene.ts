@@ -149,6 +149,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let camTheta = 0, lastT = 0;
   let alignTarget: number | null = null; // alvo p/ alinhar ao selecionar e voltar ao fechar
   let returnTheta = 0;                    // orientação a retomar quando o painel fecha
+  let introDolly = 380;                   // câmera começa afastada (fly-in cinematográfico)
+  let introActive = false;                // só recua depois que o usuário clica em "iniciar"
   let rafId = 0;
   function animate() {
     rafId = requestAnimationFrame(animate);
@@ -171,6 +173,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     sx += (mouseX - sx) * 0.04;
     sy += (mouseY - sy) * 0.04;
     swoop *= 0.94;
+    if (introActive) introDolly *= 0.972; // fly-in: recua suavemente até a distância padrão
     focus += (targetFocus - focus) * 0.06;
     // Rotação da câmera:
     // - com um anel selecionado (ou voltando ao fechar), gira suavemente até um
@@ -188,7 +191,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const theta = camTheta + sx * 0.35;
     // posição inicial afastada: enquadra a esfera inteira com folga. Ao focar,
     // um pequeno empurrão extra dá margem ao lado do painel aberto.
-    const radius = 150 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus);
+    const radius = 150 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus) + introDolly;
     const phi = 1.35 + sy * 0.2;
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
@@ -200,6 +203,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     setScroll(p: number) { scrollP = p; },
     setBloom(v: number) { bloom.strength = v; },
     setFocus(f: number) { targetFocus = f; },
+    startIntro() { introActive = true; },
     setLocked(i: number) {
       if (lockedIdx >= 0 && rings[lockedIdx]) {
         const m = ud(rings[lockedIdx]).mat;

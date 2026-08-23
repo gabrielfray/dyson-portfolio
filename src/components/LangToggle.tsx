@@ -6,7 +6,7 @@ const Button = styled.button`
   position: fixed;
   top: 24px;
   left: 28px;
-  z-index: 40;
+  z-index: 60; /* acima do portão de inicialização (z 50) */
   font-size: 12px;
   padding: 8px 16px;
 `;

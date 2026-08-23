@@ -20,5 +20,6 @@ export interface DysonSceneApi {
   setBloom: (v: number) => void;
   setFocus: (f: number) => void;
   setLocked: (i: number) => void;
+  startIntro: () => void; // dispara o fly-in cinematográfico da câmera
   dispose: () => void;
 }

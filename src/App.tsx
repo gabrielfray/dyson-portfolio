@@ -10,6 +10,7 @@ import { RingLegend } from './components/RingLegend';
 import { SectionPanel } from './components/SectionPanel';
 import { Reticle } from './components/Reticle';
 import { PlanetCard } from './components/PlanetCard';
+import { IntroGate } from './components/IntroGate';
 import * as S from './App.styles';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
   const [hoverRing, setHoverRing] = useState<Section | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [hoverPlanet, setHoverPlanet] = useState<number | null>(null);
+  const [started, setStarted] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
@@ -27,7 +29,7 @@ export default function App() {
     selRef.current = sel;
   }, [sel]);
 
-  const termLines = useTerminal(lang);
+  const termLines = useTerminal(lang, started);
   const pt = lang === 'pt';
   const content = useMemo(() => getContent(lang), [lang]);
 
@@ -106,17 +108,22 @@ export default function App() {
 
       <LangToggle label={content.langLabel} onClick={toggleLang} />
 
-      <Console lines={termLines} />
+      {/* HUD entra em cena só depois do "iniciar" */}
+      {started && (
+        <>
+          <Console lines={termLines} />
 
-      {hasHover && <RingHoverIndicator label={hoverLabel} hint={content.hoverHint} />}
+          {hasHover && <RingHoverIndicator label={hoverLabel} hint={content.hoverHint} />}
 
-      <RingLegend
-        sections={SECTIONS}
-        lang={lang}
-        sel={sel}
-        width={legendWidth}
-        onSelect={(i) => (sel === i ? close() : select(i))}
-      />
+          <RingLegend
+            sections={SECTIONS}
+            lang={lang}
+            sel={sel}
+            width={legendWidth}
+            onSelect={(i) => (sel === i ? close() : select(i))}
+          />
+        </>
+      )}
 
       {focused && selId && (
         <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
@@ -127,6 +134,14 @@ export default function App() {
           <Reticle />
           <PlanetCard key={PLANETS[hoverPlanet].key + '-' + lang} planet={PLANETS[hoverPlanet]} lang={lang} innerRef={planetCardRef} />
         </S.PlanetOverlay>
+      )}
+
+      {!started && (
+        <IntroGate
+          lang={lang}
+          onStart={() => sceneApiRef.current?.startIntro()}
+          onFinished={() => setStarted(true)}
+        />
       )}
     </S.Root>
   );

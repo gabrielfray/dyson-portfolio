@@ -21,12 +21,13 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * digita cada linha caractere a caractere, faz uma pausa, apaga tudo e repete.
  * Reinicia sempre que o idioma muda.
  */
-export function useTerminal(lang: Lang): TermLine[] {
+export function useTerminal(lang: Lang, active = true): TermLine[] {
   const [termLines, setTermLines] = useState<TermLine[]>([]);
   const tokenRef = useRef(0);
 
   useEffect(() => {
     tokenRef.current += 1;
+    if (!active) return; // só começa a datilografar depois do "iniciar"
     const tok = tokenRef.current;
     const defs = termDefs(lang);
 
@@ -62,7 +63,7 @@ export function useTerminal(lang: Lang): TermLine[] {
     return () => {
       tokenRef.current += 1;
     };
-  }, [lang]);
+  }, [lang, active]);
 
   return termLines;
 }
