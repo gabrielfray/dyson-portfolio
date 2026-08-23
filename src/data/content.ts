@@ -71,25 +71,47 @@ export function termDefs(lang: Lang): TermDef[] {
   ];
 }
 
+export interface BootLine {
+  label: string;
+  status: string;
+}
 export interface IntroText {
-  protocol: string;
-  title: string;
-  subtitle: string;
-  boot: string[];
-  ok: string;
+  titlebar: string;
+  lines: BootLine[];
+  ready: string;
+  awaiting: string;
   start: string;
 }
 
 export function getIntro(lang: Lang): IntroText {
   const pt = lang === 'pt';
   return {
-    protocol: pt ? 'PROTOCOLO DE INICIALIZAÇÃO' : 'BOOT SEQUENCE',
-    title: pt ? 'ESFERA DE DYSON' : 'DYSON SPHERE',
-    subtitle: 'GABRIEL FRAY · PORTFÓLIO',
-    boot: pt
-      ? ['núcleo estelar', 'anéis orbitais', 'sistema solar', 'campo estelar']
-      : ['stellar core', 'orbital rings', 'solar system', 'starfield'],
-    ok: 'OK',
+    titlebar: pt ? 'GF://DYSON-ARRAY · TERMINAL DE CONTROLE' : 'GF://DYSON-ARRAY · CONTROL TERMINAL',
+    lines: pt
+      ? [
+          { label: 'inicializando GF-OS · kernel v1.0', status: 'OK' },
+          { label: 'núcleo estelar · classe G · 1 L☉', status: 'ATIVO' },
+          { label: 'anéis coletores · captação 3.8·10²⁶ W', status: '6/6' },
+          { label: 'enxame orbital · sincronização kepleriana', status: 'OK' },
+          { label: 'efemérides do sistema solar', status: 'CARREGADO' },
+          { label: 'campo estelar · 17.000 pontos', status: 'INDEXADO' },
+          { label: 'casca geodésica · icosaedro nível 2', status: 'OK' },
+          { label: 'classificação · Kardashev II (parcial)', status: 'OK' },
+          { label: 'uplink com o operador', status: 'ESTÁVEL' },
+        ]
+      : [
+          { label: 'booting GF-OS · kernel v1.0', status: 'OK' },
+          { label: 'stellar core · class G · 1 L☉', status: 'ONLINE' },
+          { label: 'collector rings · 3.8·10²⁶ W intake', status: '6/6' },
+          { label: 'orbital swarm · keplerian sync', status: 'OK' },
+          { label: 'solar system ephemeris', status: 'LOADED' },
+          { label: 'starfield · 17,000 points', status: 'INDEXED' },
+          { label: 'geodesic shell · icosahedron L2', status: 'OK' },
+          { label: 'classification · Kardashev II (partial)', status: 'OK' },
+          { label: 'operator uplink', status: 'STABLE' },
+        ],
+    ready: pt ? 'SISTEMA PRONTO' : 'SYSTEM READY',
+    awaiting: pt ? 'aguardando comando do operador' : 'awaiting operator command',
     start: pt ? 'INICIAR PROJETO' : 'START PROJECT',
   };
 }

@@ -62,4 +62,12 @@ export const GlobalStyle = createGlobalStyle`
     0%, 100% { box-shadow: 0 0 16px rgba(255, 202, 112, 0.3); }
     50% { box-shadow: 0 0 38px rgba(255, 202, 112, 0.68); }
   }
+  @keyframes crtFlicker {
+    0%, 100% { opacity: 1; }
+    3% { opacity: 0.96; }
+    6% { opacity: 1; }
+    55% { opacity: 0.99; }
+    58% { opacity: 0.94; }
+    61% { opacity: 1; }
+  }
 `;
