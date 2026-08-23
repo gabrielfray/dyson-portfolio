@@ -11,6 +11,7 @@ import { createGalaxies } from './galaxies';
 import { createSun } from './sun';
 import { createDysonStructure, ud } from './rings';
 import { createPlanets, updatePlanets } from './planets';
+import { createAnomalies } from './anomalies';
 
 export type { Section, DysonSceneOptions, DysonSceneApi } from './types';
 
@@ -22,7 +23,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 2000);
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 4000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -37,6 +38,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const sun = createSun(scene);
   const { dyson, shell, rings } = createDysonStructure(scene);
   const { planets, planetPick } = createPlanets(scene);
+  const { anomalies, update: updateAnomalies } = createAnomalies(scene);
+  const anomalyPick = anomalies.map((a) => a.pick);
 
   // ---------- Interatividade: anéis como portais de navegação ----------
   const sections = opts.sections || [];
@@ -52,6 +55,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const pointer = new THREE.Vector2();
   let hovered = -1, swoop = 0, lockedIdx = -1, focus = 0, targetFocus = 0;
   let planetHover = -1;
+  let anomalyHover = -1;
+  // controle manual: clicar no núcleo trava a rotação automática e libera o arraste
+  let manual = false, dragging = false, moved = false;
+  let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
+  // alvo de clique no centro (invisível), dentro dos anéis
+  const corePick = new THREE.Mesh(new THREE.SphereGeometry(20, 12, 12), new THREE.MeshBasicMaterial({ visible: false }));
+  scene.add(corePick);
 
   function setHover(i: number) {
     if (hovered === i) return;
@@ -68,7 +78,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       m.emissiveIntensity = 0.9;
       ud(rings[i]).speed = ud(rings[i]).baseSpeed * 4;
     }
-    renderer.domElement.style.cursor = i >= 0 ? 'pointer' : '';
+    renderer.domElement.style.cursor = i >= 0 ? 'pointer' : manual ? 'grab' : '';
     if (opts.onHover) opts.onHover(i >= 0 ? ud(rings[i]).section ?? null : null);
   }
 
@@ -78,36 +88,104 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       opts.onPlanetHover?.(null);
     }
   };
+  const clearAnomalyHover = () => {
+    if (anomalyHover >= 0) {
+      anomalyHover = -1;
+      opts.onAnomalyHover?.(null);
+    }
+  };
   const onPointerMovePick = (e: PointerEvent) => {
+    if (dragging) { // arrastando no modo manual: gira a câmera
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      camTheta -= dx * 0.005;
+      manualPhi = Math.max(-1.0, Math.min(1.2, manualPhi + dy * 0.004));
+      if (Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 4) moved = true;
+      return;
+    }
     pointer.x = (e.clientX / innerWidth) * 2 - 1;
     pointer.y = -(e.clientY / innerHeight) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
-    // planetas (exploração) — só quando nenhuma seção está aberta
-    if (lockedIdx < 0 && planetPick.length) {
-      const ph = raycaster.intersectObjects(planetPick, false);
+    // planetas e anomalias (exploração) — só quando nenhuma seção está aberta
+    if (lockedIdx < 0) {
+      const ph = planetPick.length ? raycaster.intersectObjects(planetPick, false) : [];
       if (ph.length) {
         const idx = ph[0].object.userData.planetIndex as number;
         if (planetHover !== idx) {
           planetHover = idx;
           opts.onPlanetHover?.(idx);
         }
+        clearAnomalyHover();
         setHover(-1);
         renderer.domElement.style.cursor = 'pointer';
         return;
       }
+      clearPlanetHover();
+      const ah = anomalyPick.length ? raycaster.intersectObjects(anomalyPick, false) : [];
+      if (ah.length) {
+        const key = ah[0].object.userData.anomalyKey as string;
+        const idx = anomalies.findIndex((a) => a.key === key);
+        if (anomalyHover !== idx) {
+          anomalyHover = idx;
+          opts.onAnomalyHover?.(key);
+        }
+        setHover(-1);
+        renderer.domElement.style.cursor = 'pointer';
+        return;
+      }
+      clearAnomalyHover();
+    } else {
+      clearPlanetHover();
+      clearAnomalyHover();
     }
-    clearPlanetHover();
     // anéis (navegação)
     if (scrollP > 0.45 || !pickMeshes.length || lockedIdx >= 0) {
       setHover(-1);
       return;
     }
     const hits = raycaster.intersectObjects(pickMeshes, false);
-    setHover(hits.length ? (hits[0].object.userData.ringIndex as number) : -1);
+    const ringIdx = hits.length ? (hits[0].object.userData.ringIndex as number) : -1;
+    setHover(ringIdx);
+    if (ringIdx < 0) { // núcleo clicável mostra cursor de ponteiro
+      const core = raycaster.intersectObject(corePick, false);
+      renderer.domElement.style.cursor = core.length ? 'pointer' : manual ? 'grab' : '';
+    }
   };
   renderer.domElement.addEventListener('pointermove', onPointerMovePick);
 
+  const onPointerDown = (e: PointerEvent) => {
+    downX = e.clientX;
+    downY = e.clientY;
+    moved = false;
+    if (manual) {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      renderer.domElement.style.cursor = 'grabbing';
+    }
+  };
+  const onPointerUp = () => {
+    if (dragging) {
+      dragging = false;
+      renderer.domElement.style.cursor = manual ? 'grab' : '';
+    }
+  };
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  addEventListener('pointerup', onPointerUp);
+
   const onClickPick = () => {
+    if (moved) { moved = false; return; } // foi um arraste, não um clique
+    if (lockedIdx < 0) {
+      raycaster.setFromCamera(pointer, camera);
+      if (raycaster.intersectObject(corePick, false).length) { // clicou no núcleo: alterna manual
+        manual = !manual;
+        manualPhi = 0;
+        renderer.domElement.style.cursor = manual ? 'grab' : '';
+        opts.onManual?.(manual);
+        return;
+      }
+    }
     if (hovered >= 0 && scrollP <= 0.45 && lockedIdx < 0) {
       swoop = 1;
       if (opts.onSelect) opts.onSelect(ud(rings[hovered]).section!, hovered);
@@ -138,8 +216,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const onWheel = (e: WheelEvent) => {
     if (lockedIdx >= 0) return; // painel aberto: wheel rola o painel
     // zoom-in limitado (evita o bloom do sol estourar de perto); zoom-out bem amplo
-    // p/ afastar até achar Plutão (~560 unid., o easter egg mais distante)
-    userZoom = Math.max(-18, Math.min(620, userZoom + Math.sign(e.deltaY) * 16));
+    // p/ afastar até a borda e caçar os easter eggs (ficam a ~1400-1550 unid.)
+    userZoom = Math.max(-18, Math.min(1150, userZoom + Math.sign(e.deltaY) * 16));
   };
   addEventListener('wheel', onWheel, { passive: true });
 
@@ -164,8 +242,11 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
     updatePlanets(planets, dt, planetHover);
-    if (planetHover >= 0 && opts.onPlanetTrack) {
-      planets[planetHover].body.getWorldPosition(projV);
+    updateAnomalies(t);
+    // rastreia na tela o objeto sob o cursor (planeta OU anomalia)
+    const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
+    if (tracked && opts.onPlanetTrack) {
+      tracked.getWorldPosition(projV);
       projV.project(camera);
       opts.onPlanetTrack((projV.x * 0.5 + 0.5) * innerWidth, (-projV.y * 0.5 + 0.5) * innerHeight);
     }
@@ -185,14 +266,14 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         camTheta = alignTarget;
         alignTarget = null; // voltou à posição inicial: retoma a órbita livre
       }
-    } else {
-      camTheta += dt * 0.05 * (1 - focus * 0.85);
+    } else if (!manual) {
+      camTheta += dt * 0.05 * (1 - focus * 0.85); // órbita automática (desligada no manual)
     }
-    const theta = camTheta + sx * 0.35;
+    const theta = camTheta + (manual ? 0 : sx * 0.35);
     // posição inicial afastada: enquadra a esfera inteira com folga. Ao focar,
     // um pequeno empurrão extra dá margem ao lado do painel aberto.
     const radius = 150 + scrollP * 90 + focus * 12 - swoop * 4 + userZoom * (1 - focus) + introDolly;
-    const phi = 1.35 + sy * 0.2;
+    const phi = Math.max(0.25, Math.min(2.75, 1.35 + (manual ? manualPhi : sy * 0.2)));
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
     composer.render();
@@ -213,7 +294,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       }
       lockedIdx = i;
       hovered = -1;
-      if (i >= 0) clearPlanetHover(); // some com o painel do planeta ao abrir seção
+      if (i >= 0) { clearPlanetHover(); clearAnomalyHover(); } // some com cards ao abrir seção
       if (i >= 0 && rings[i]) {
         const m = ud(rings[i]).mat;
         m.emissive.setHex(0xffca70);
@@ -239,6 +320,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       removeEventListener('wheel', onWheel);
       renderer.domElement.removeEventListener('pointermove', onPointerMovePick);
       renderer.domElement.removeEventListener('click', onClickPick);
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      removeEventListener('pointerup', onPointerUp);
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);

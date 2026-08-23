@@ -116,6 +116,106 @@ export function getIntro(lang: Lang): IntroText {
   };
 }
 
+// ---------- Anomalias / easter eggs (objetos especiais no fundo) ----------
+export interface AnomalyInfo {
+  name: string;
+  kind: string;
+  rows: { label: string; value: string }[];
+  status?: string; // linha destacada, não tarjada (ex.: CLASSIFICADO)
+  note?: string; // citação/curiosidade
+  glitch?: boolean; // nome embaralha (designação desconhecida)
+  redacted?: boolean; // valores tarjados
+}
+
+export function getAnomaly(key: string, lang: Lang): AnomalyInfo {
+  const pt = lang === 'pt';
+  const T = (a: string, b: string) => (pt ? a : b);
+  switch (key) {
+    case 'oumuamua':
+      return {
+        name: "'Oumuamua",
+        kind: T('objeto interestelar', 'interstellar object'),
+        rows: [
+          { label: T('DESIGNAÇÃO', 'DESIGNATION'), value: '1I/2017 U1' },
+          { label: T('VELOCIDADE', 'SPEED'), value: '87,3 km/s' },
+          { label: T('COMPRIMENTO', 'LENGTH'), value: '~400 m' },
+          { label: T('ORIGEM', 'ORIGIN'), value: T('fora do sistema', 'interstellar') },
+          { label: 'STATUS', value: T('de passagem', 'transient') },
+        ],
+        note: T('acelerou sem cauda cometária — origem debatida', 'non-gravitational acceleration, no tail — origin debated'),
+      };
+    case 'tabby':
+      return {
+        name: "Tabby's Star",
+        kind: 'KIC 8462852',
+        rows: [
+          { label: T('DISTÂNCIA', 'DISTANCE'), value: T('1.470 anos-luz', '1,470 light-years') },
+          { label: T('TIPO', 'TYPE'), value: 'F3 V' },
+          { label: T('BRILHO', 'FLUX'), value: T('quedas irregulares', 'irregular dips') },
+          { label: T('HIPÓTESE', 'HYPOTHESIS'), value: T('megaestrutura?', 'megastructure?') },
+          { label: 'STATUS', value: T('sob observação', 'monitored') },
+        ],
+        note: T('o mistério que inspirou este projeto', 'the mystery that inspired this project'),
+      };
+    case 'monolith':
+      return {
+        name: 'MONÓLITO · TMA-1',
+        kind: T('artefato · origem desconhecida', 'artifact · unknown origin'),
+        rows: [
+          { label: T('PROPORÇÃO', 'RATIO'), value: '1 : 4 : 9' },
+          { label: T('MATERIAL', 'MATERIAL'), value: '—' },
+          { label: T('IDADE', 'AGE'), value: T('~4 mi anos', '~4 Myr') },
+          { label: T('FUNÇÃO', 'FUNCTION'), value: T('desconhecida', 'unknown') },
+          { label: 'STATUS', value: T('inerte', 'dormant') },
+        ],
+        note: T('"Meu Deus… está cheio de estrelas."', '"My God… it\'s full of stars."'),
+      };
+    case 'voyager':
+      return {
+        name: 'Voyager 1',
+        kind: T('sonda · 1977', 'probe · 1977'),
+        rows: [
+          { label: T('DISTÂNCIA', 'DISTANCE'), value: '163 UA' },
+          { label: T('VELOCIDADE', 'SPEED'), value: '17 km/s' },
+          { label: T('CARGA', 'PAYLOAD'), value: T('Disco de Ouro', 'Golden Record') },
+          { label: T('REGIÃO', 'REGION'), value: T('meio interestelar', 'interstellar medium') },
+          { label: 'STATUS', value: T('ativa', 'active') },
+        ],
+        note: T('"Olhe de novo esse ponto. É aqui. É a nossa casa." — Sagan', '"Look again at that dot. That\'s here. That\'s home." — Sagan'),
+      };
+    case 'tardis':
+      return {
+        name: 'TARDIS',
+        kind: T('cabine policial · Tipo 40', 'police box · Type 40'),
+        rows: [
+          { label: T('MODELO', 'MODEL'), value: 'TT Capsule, Mark I' },
+          { label: T('CAMUFLAGEM', 'CHAMELEON'), value: T('travada (1963)', 'stuck (1963)') },
+          { label: T('DIMENSÕES', 'DIMENSIONS'), value: T('maior por dentro', 'bigger on the inside') },
+          { label: T('PROPULSÃO', 'DRIVE'), value: T('Vórtice do Tempo', 'Time Vortex') },
+          { label: 'STATUS', value: T('em trânsito', 'in transit') },
+        ],
+        note: T('"Wibbly-wobbly… timey-wimey."', '"Wibbly-wobbly… timey-wimey."'),
+      };
+    case 'ufo':
+    default:
+      return {
+        name: 'UNKNOWN',
+        kind: T('// SINAL DESCONHECIDO', '// UNKNOWN SIGNAL'),
+        rows: [
+          { label: T('DISTÂNCIA', 'DISTANCE'), value: '' },
+          { label: T('MASSA', 'MASS'), value: '' },
+          { label: T('VELOCIDADE', 'VELOCITY'), value: '' },
+          { label: T('ORIGEM', 'ORIGIN'), value: '' },
+          { label: T('ASSINATURA', 'SIGNATURE'), value: '' },
+        ],
+        status: T('CLASSIFICADO', 'CLASSIFIED'),
+        note: T('NÃO RESPONDA · NÃO RESPONDA · NÃO RESPONDA', 'DO NOT ANSWER · DO NOT ANSWER · DO NOT ANSWER'),
+        glitch: true,
+        redacted: true,
+      };
+  }
+}
+
 export function getContent(lang: Lang): Content {
   const pt = lang === 'pt';
   const T = (a: string, b: string) => (pt ? a : b);

@@ -10,6 +10,7 @@ import { RingLegend } from './components/RingLegend';
 import { SectionPanel } from './components/SectionPanel';
 import { Reticle } from './components/Reticle';
 import { PlanetCard } from './components/PlanetCard';
+import { AnomalyCard } from './components/AnomalyCard';
 import { IntroGate } from './components/IntroGate';
 import * as S from './App.styles';
 
@@ -18,7 +19,9 @@ export default function App() {
   const [hoverRing, setHoverRing] = useState<Section | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [hoverPlanet, setHoverPlanet] = useState<number | null>(null);
+  const [hoverAnomaly, setHoverAnomaly] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+  const [manual, setManual] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
@@ -62,6 +65,8 @@ export default function App() {
       onHover: (s) => setHoverRing(selRef.current == null ? s : null),
       onSelect: (_s, idx) => select(idx),
       onPlanetHover: (idx) => setHoverPlanet(idx),
+      onAnomalyHover: (key) => setHoverAnomaly(key),
+      onManual: (m) => setManual(m),
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
         if (!el2) return;
@@ -72,6 +77,11 @@ export default function App() {
           const rightSide = x > innerWidth * 0.58; // vira o card p/ não sair da tela
           card.style.left = rightSide ? 'auto' : '46px';
           card.style.right = rightSide ? '46px' : 'auto';
+          // abre p/ baixo se o objeto está na metade de cima; p/ cima se está embaixo
+          const below = y < innerHeight * 0.5;
+          card.style.top = below ? '18px' : 'auto';
+          card.style.bottom = below ? 'auto' : '18px';
+          card.style.transform = 'none';
         }
       },
     });
@@ -108,6 +118,13 @@ export default function App() {
 
       <LangToggle label={content.langLabel} onClick={toggleLang} />
 
+      {started && manual && (
+        <S.ManualHint>
+          {pt ? 'CONTROLE MANUAL' : 'MANUAL CONTROL'}
+          <span>{pt ? 'arraste p/ girar · clique no núcleo p/ soltar' : 'drag to rotate · click core to release'}</span>
+        </S.ManualHint>
+      )}
+
       {/* HUD entra em cena só depois do "iniciar" */}
       {started && (
         <>
@@ -129,10 +146,14 @@ export default function App() {
         <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
       )}
 
-      {hoverPlanet !== null && (
+      {(hoverPlanet !== null || hoverAnomaly !== null) && (
         <S.PlanetOverlay ref={planetOverlayRef}>
           <Reticle />
-          <PlanetCard key={PLANETS[hoverPlanet].key + '-' + lang} planet={PLANETS[hoverPlanet]} lang={lang} innerRef={planetCardRef} />
+          {hoverAnomaly !== null ? (
+            <AnomalyCard key={hoverAnomaly + '-' + lang} anomKey={hoverAnomaly} lang={lang} innerRef={planetCardRef} />
+          ) : (
+            <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} />
+          )}
         </S.PlanetOverlay>
       )}
 

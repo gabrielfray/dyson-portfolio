@@ -13,6 +13,8 @@ export interface DysonSceneOptions {
   onSelect?: (section: Section, index: number) => void;
   onPlanetHover?: (index: number | null) => void;
   onPlanetTrack?: (x: number, y: number) => void;
+  onAnomalyHover?: (key: string | null) => void;
+  onManual?: (manual: boolean) => void; // liga/desliga o controle manual (arraste)
 }
 
 export interface DysonSceneApi {
