@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -67,7 +67,11 @@ export default function App() {
       onSelect: (_s, idx) => select(idx),
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
-      onAnomalyClick: (key) => playAnomalySfx(key),
+      onAnomalyClick: (key) => {
+        // trocar p/ outro egg encerra a Petrova; re-clicar o Adrian reinicia (não encerra)
+        if (key !== 'hailmary') sceneApiRef.current?.stopPetrova();
+        playAnomalySfx(key);
+      },
       onManual: (m) => setManual(m),
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
@@ -122,7 +126,13 @@ export default function App() {
   useEffect(() => {
     // pointerdown (não 'click'): dispara em qualquer toque/press, mesmo que vire
     // arraste -> qualquer interação encerra música + modo IR com fade suave.
-    const stop = () => { stopAllSfx(); sceneApiRef.current?.stopPetrova(); };
+    // EXCEÇÃO: o evento do Hail Mary (Adrian) roda até a música acabar; clicar
+    // fora não o interrompe (só o fim da música, via setOnFileEnded, encerra).
+    const stop = () => {
+      if (currentSfxKey() === 'hailmary') return;
+      stopAllSfx();
+      sceneApiRef.current?.stopPetrova();
+    };
     window.addEventListener('pointerdown', stop, true);
     // fim da música do Hail Mary -> encerra o modo IR/véus com fade suave
     setOnFileEnded(() => sceneApiRef.current?.stopPetrova());

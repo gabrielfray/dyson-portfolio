@@ -45,18 +45,25 @@ function makeGalaxyTexture(arms: number, turns: number) {
 
 // Adiciona galáxias distantes ao fundo (planos inclinados, aditivos, encarando
 // a origem e inclinados p/ ler como disco).
-export function createGalaxies(scene: THREE.Scene) {
+export function createGalaxies(scene: THREE.Scene): { update: (ir: number) => void } {
+  const mats: THREE.MeshBasicMaterial[] = [];
   const addGalaxy = (tex: THREE.Texture, sizeW: number, pos: [number, number, number], tiltX: number, tiltZ: number, opacity: number) => {
-    const gx = new THREE.Mesh(
-      new THREE.PlaneGeometry(sizeW, sizeW),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, opacity }),
-    );
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, opacity });
+    const gx = new THREE.Mesh(new THREE.PlaneGeometry(sizeW, sizeW), mat);
     gx.position.set(pos[0], pos[1], pos[2]);
     gx.lookAt(0, 0, 0);
     gx.rotateX(tiltX);
     gx.rotateZ(tiltZ);
     scene.add(gx);
+    mats.push(mat);
   };
   addGalaxy(makeGalaxyTexture(2, 2.4), 620, [620, 200, -1060], 0.95, 0.35, 0.5); // espiral principal (sup. dir.)
   addGalaxy(makeGalaxyTexture(3, 1.8), 340, [-580, -440, -1000], 1.15, -0.5, 0.36); // menor/mais fraca (inf. esq.)
+
+  // No modo IR (nuvem de Petrova), as galáxias avermelham junto com o resto do céu.
+  return {
+    update: (ir: number) => {
+      for (const m of mats) m.color.setRGB(1, 1 - 0.82 * ir, 1 - 0.86 * ir);
+    },
+  };
 }

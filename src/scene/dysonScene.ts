@@ -61,7 +61,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
 
   // Conteúdo da cena (cada módulo se adiciona à scene e devolve seus handles).
   const stars = createStarfield(scene);
-  createGalaxies(scene);
+  const galaxies = createGalaxies(scene);
   const sun = createSun(scene, isMobile);
   const { dyson, shell, rings } = createDysonStructure(scene);
   const { planets, planetPick } = createPlanets(scene);
@@ -428,10 +428,11 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     shell.rotation.y = t * 0.015;
     // após a detonação, a onda de choque destrói os planetas (menos Plutão)
     const blastT = sun.state.exploding && sun.state.et > 2.1 ? sun.state.et - 2.1 : -1;
-    updatePlanets(planets, dt, planetHover, blastT);
+    updatePlanets(planets, dt, planetHover, blastT, ir);
     updateAnomalies(t, userZoom, ir);
     updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)
     updateAstro(t, ir); // brilho de fundo (só no IR)
+    galaxies.update(ir); // galáxias avermelhadas no modo IR
     // rastreia na tela o objeto sob o cursor (planeta OU anomalia)
     const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
     if (tracked && opts.onPlanetTrack) {

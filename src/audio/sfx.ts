@@ -118,10 +118,14 @@ const FILE_VOLUME: Record<string, number> = {
 };
 const audioCache: Record<string, HTMLAudioElement> = {};
 let currentFile: HTMLAudioElement | null = null;
+let currentKey: string | null = null;
 let fadeTimer = 0;
 let onFileEnded: (() => void) | null = null;
 // aviso de fim da música (usado p/ encerrar animações atreladas, ex.: modo IR)
 export function setOnFileEnded(cb: (() => void) | null): void { onFileEnded = cb; }
+// key do som de arquivo tocando agora (null se nenhum). Usado p/ proteger o
+// evento do Hail Mary de ser interrompido por cliques fora — ele roda até o fim.
+export function currentSfxKey(): string | null { return currentKey; }
 
 function playFile(key: string): void {
   const name = FILES[key];
@@ -135,8 +139,9 @@ function playFile(key: string): void {
   clearInterval(fadeTimer);
   a.volume = FILE_VOLUME[key] ?? TARDIS_VOLUME;
   a.currentTime = 0;
-  a.onended = () => { if (currentFile === a) { currentFile = null; onFileEnded?.(); } };
+  a.onended = () => { if (currentFile === a) { currentFile = null; currentKey = null; onFileEnded?.(); } };
   currentFile = a;
+  currentKey = key;
   void a.play().catch(() => { /* arquivo ausente ou sem gesto: ignora */ });
 }
 
@@ -145,6 +150,7 @@ function stopFile(): void {
   const a = currentFile;
   if (!a) return;
   currentFile = null;
+  currentKey = null;
   a.onended = null;
   clearInterval(fadeTimer);
   const v0 = a.volume, t0 = performance.now();

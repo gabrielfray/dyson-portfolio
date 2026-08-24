@@ -17,6 +17,7 @@ export interface PlanetRt {
   dead: boolean;
   deadT: number;
   fx: PlanetFx | null; // efeito de destruição (criado ao morrer)
+  irMats: THREE.ShaderMaterial[]; // materiais que recebem o tom infravermelho (corpo, atmosfera, anel)
 }
 
 interface PlanetFx {
@@ -249,22 +250,25 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const r = p.key === 'plutao' ? 560 : ORBIT_INNER + (ORBIT_OUTER - ORBIT_INNER) * norm;
     const size = p.bodyPx * BODY_SCALE * PX_TO_WORLD;
     const surfTex = planetTexture(p.key);
+    const irMats: THREE.ShaderMaterial[] = [];
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(surfTex ? 0xffffff : p.color) },
         uShin: { value: THREE.MathUtils.lerp(6, 90, 1 - p.rough) }, // menos rugoso -> glint concentrado
         uSpec: { value: 0.22 + p.metal * 0.9 },
         uAmbient: { value: 0.08 }, // piso p/ o lado escuro não sumir
+        uIr: { value: 0 },
         uMap: { value: surfTex ?? whiteTex },
       },
       vertexShader: PLANET_VERT,
       fragmentShader: PLANET_FRAG,
     });
+    irMats.push(mat);
     const body = new THREE.Mesh(new THREE.SphereGeometry(size, 32, 32), mat);
     body.position.x = r; // luz vem da origem: a fase iluminada aponta p/ a estrela
     if (p.atmoI > 0) {
       const atmoMat = new THREE.ShaderMaterial({
-        uniforms: { uAtmo: { value: new THREE.Color(p.atmo) }, uI: { value: p.atmoI } },
+        uniforms: { uAtmo: { value: new THREE.Color(p.atmo) }, uI: { value: p.atmoI }, uIr: { value: 0 } },
         vertexShader: PLANET_VERT,
         fragmentShader: ATMO_FRAG,
         transparent: true,
@@ -272,6 +276,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
         side: THREE.BackSide,
         depthWrite: false,
       });
+      irMats.push(atmoMat);
       body.add(new THREE.Mesh(new THREE.SphereGeometry(size * 1.06, 32, 32), atmoMat));
     }
     if (p.ring) {
@@ -279,13 +284,14 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
       const rIn = size * 1.24, rOut = size * 2.27;
       const ringGeo = new THREE.RingGeometry(rIn, rOut, 128, 8);
       const ringMat = new THREE.ShaderMaterial({
-        uniforms: { uColor: { value: new THREE.Color(0xd8c79a) }, uInner: { value: rIn }, uOuter: { value: rOut } },
+        uniforms: { uColor: { value: new THREE.Color(0xd8c79a) }, uInner: { value: rIn }, uOuter: { value: rOut }, uIr: { value: 0 } },
         vertexShader: RING_VERT,
         fragmentShader: RING_FRAG,
         transparent: true,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
+      irMats.push(ringMat);
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.set(Math.PI / 2 - 0.45, 0, 0); // levemente inclinado
       body.add(ring);
@@ -300,7 +306,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     solar.add(pivot);
     // onda de choque atinge por distância (de dentro p/ fora); Plutão é longe demais
     const destroyAt = p.key === 'plutao' ? Infinity : 0.1 + r / 150;
-    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null });
+    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats });
   });
 
   return { planets, planetPick };
@@ -308,8 +314,9 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
 
 // Avança as órbitas (kepleriano) e a rotação própria; congela o planeta sob o
 // cursor (planetHover) para leitura estável do card.
-export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1) {
+export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0) {
   planets.forEach((p, i) => {
+    for (const m of p.irMats) m.uniforms.uIr.value = ir; // tom infravermelho (Petrova)
     if (p.dead) { p.deadT += dt; animateBurst(p); return; } // destruído: só anima o burst
     if (blastT >= 0 && blastT >= p.destroyAt) { killPlanet(p); return; } // onda de choque chegou
     if (i !== planetHover) p.angle += p.omega * dt;

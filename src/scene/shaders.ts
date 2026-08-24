@@ -125,6 +125,7 @@ export const PLANET_FRAG = `
   uniform float uShin;
   uniform float uSpec;
   uniform float uAmbient;
+  uniform float uIr;        // modo infravermelho (astrophage): tinge de vermelho
   uniform sampler2D uMap;   // faixas (gigantes) ou textura branca 1x1 (demais)
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
@@ -138,6 +139,8 @@ export const PLANET_FRAG = `
     vec3 H = normalize(L + V);
     float spec = (diff > 0.0 ? 1.0 : 0.0) * uSpec * pow(max(dot(N, H), 0.0), uShin);
     vec3 col = albedo * (uAmbient + diff) + vec3(spec);
+    // sob a luz de Petrova o sistema fica avermelhado (mantém o relevo/sombreado)
+    col = mix(col, col * vec3(1.5, 0.32, 0.26) + vec3(0.03, 0.0, 0.0), uIr);
     gl_FragColor = vec4(col, 1.0);
   }`;
 
@@ -145,6 +148,7 @@ export const PLANET_FRAG = `
 export const ATMO_FRAG = `
   uniform vec3 uAtmo;
   uniform float uI;
+  uniform float uIr;        // modo infravermelho: halo atmosférico vira avermelhado
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
   void main() {
@@ -153,7 +157,8 @@ export const ATMO_FRAG = `
     vec3 L = normalize(-vWorldPos);
     float f = pow(1.0 - max(dot(N, V), 0.0), 3.0);
     float lit = max(dot(N, L), 0.0);
-    gl_FragColor = vec4(uAtmo, f * uI * (0.25 + 0.9 * lit));
+    vec3 atmo = mix(uAtmo, vec3(0.85, 0.12, 0.10), uIr);
+    gl_FragColor = vec4(atmo, f * uI * (0.25 + 0.9 * lit));
   }`;
 
 // Anéis de Saturno: perfil radial real — C (tênue), B (denso), lacuna de
@@ -174,6 +179,7 @@ export const RING_VERT = `
   }`;
 export const RING_FRAG = `
   uniform vec3 uColor;
+  uniform float uIr;        // modo infravermelho: anéis avermelhados
   varying float vN;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
@@ -189,5 +195,6 @@ export const RING_FRAG = `
     if (op < 0.01) discard; // lacuna de Cassini some
     vec3 L = normalize(-vWorldPos);
     float lit = 0.45 + 0.55 * abs(dot(normalize(vWorldNormal), L));
-    gl_FragColor = vec4(uColor * lit, op);
+    vec3 rc = mix(uColor, uColor * vec3(1.4, 0.35, 0.28), uIr);
+    gl_FragColor = vec4(rc * lit, op);
   }`;
