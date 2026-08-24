@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { GLOW_FRAG, GLOW_FRAG_MOBILE, GLOW_VERT } from './shaders';
 
 export const SUN_R = 6;
+// Instante do BLAST (s após detonar) — coincide com o estouro do áudio
+// (public/sounds/supernova.mp3, explosão em ~11,9s do clipe). Recortou o áudio?
+// Ajuste este valor p/ o novo instante da explosão no clipe.
+export const SN_BLAST_AT = 11.9;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (a: number, b: number, x: number) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -135,30 +139,40 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
 
       state.et += dt;
       const et = state.et;
-      state.flash = smooth(2.05, 2.16, et) * (1 - smooth(2.2, 2.8, et)); // pico de luz no detonar
+      // Sincronizado com o áudio (public/sounds/supernova.mp3): a trilha prepara
+      // por ~10,7s (carga), 1,2s de colapso e o BLAST cai em ~11,9s, exatamente
+      // no estouro do clipe. Mexeu no corte do áudio? Ajuste BLAST_AT p/ o novo
+      // instante da explosão no clipe.
+      const COLLAPSE = 1.2, BLAST_AT = SN_BLAST_AT, CHARGE = BLAST_AT - COLLAPSE;
+      const be = et - BLAST_AT; // tempo relativo ao blast (>=0 após explodir)
+      state.flash = smooth(-0.05, 0.06, be) * (1 - smooth(0.1, 0.7, be)); // pico de luz no detonar
 
-      if (et < 1.6) {
-        // instabilidade: incha, esquenta (branco-azulado) e pulsa forte
-        const k = smooth(0, 1.6, et);
-        sun.scale.setScalar(1 + k * 0.8 + Math.sin(et * 22) * 0.06 * k);
-        sunMat.color.setRGB(1, 1 - k * 0.12, 0.78 + k * 0.22);
+      if (et < CHARGE) {
+        // carga: a estrela incha devagar, esquenta e vibra cada vez mais forte,
+        // acompanhando a trilha subindo até o limite
+        const k = smooth(0, CHARGE, et);
+        const acc = k * k; // a violência se concentra no fim
+        sun.scale.setScalar(1 + k * 0.8 + Math.sin(et * (6 + 30 * acc)) * 0.05 * acc);
+        sunMat.color.setRGB(1, 1 - acc * 0.12, 0.78 + acc * 0.22);
         corona.scale.setScalar(SUN_R * 9 * (1 + k * 0.6));
-        corona.material.opacity = 1 + k * 0.6;
-        sunLight.intensity = 2400 * (1 + k * 1.6);
-        state.shake = k * 0.08;
-      } else if (et < 2.1) {
+        corona.material.opacity = 1 + acc * 0.6;
+        corona2.material.opacity = 0.85 * (1 + acc * 0.3);
+        aura.material.opacity = 0.38 + 0.25 * acc;
+        sunLight.intensity = 2400 * (1 + acc * 1.6);
+        state.shake = acc * 0.08;
+      } else if (et < BLAST_AT) {
         // colapso: encolhe rápido e escurece (o silêncio antes do estouro)
-        const k = smooth(1.6, 2.1, et);
+        const k = smooth(CHARGE, BLAST_AT, et);
         sun.scale.setScalar(lerp(1.8, 0.08, k));
         sunLight.intensity = lerp(6200, 300, k);
         corona.material.opacity = lerp(1.6, 0, k);
         corona2.material.opacity = lerp(0.85, 0, k);
-        aura.material.opacity = lerp(0.38, 0, k);
+        aura.material.opacity = lerp(0.63, 0, k);
         state.shake = 0.02;
       } else {
         // detonação + blast
         glow.visible = false;
-        const e2 = et - 2.1;
+        const e2 = be;
 
         // casca de choque: infla rápido, passa pela câmera e esmaece logo
         shell.visible = true;
@@ -199,7 +213,7 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
 
         state.shake = Math.max(state.flash, 0.3 * (1 - smooth(0, 1.0, e2)));
       }
-      state.dead = et > 2.1;
+      state.dead = et > BLAST_AT;
     },
   };
 }

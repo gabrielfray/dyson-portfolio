@@ -16,6 +16,7 @@ export interface DysonSceneOptions {
   onAnomalyHover?: (key: string | null) => void;
   onAnomalyClick?: (key: string) => void;
   onManual?: (manual: boolean) => void; // liga/desliga o controle manual (arraste)
+  onDetonate?: () => void; // 100 cliques no núcleo -> supernova (dispara o som sincronizado)
 }
 
 export interface DysonSceneApi {

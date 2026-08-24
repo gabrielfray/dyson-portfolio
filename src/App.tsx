@@ -73,6 +73,8 @@ export default function App() {
         playAnomalySfx(key);
       },
       onManual: (m) => setManual(m),
+      onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
+
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
         if (!el2) return;
@@ -129,7 +131,9 @@ export default function App() {
     // EXCEÇÃO: o evento do Hail Mary (Adrian) roda até a música acabar; clicar
     // fora não o interrompe (só o fim da música, via setOnFileEnded, encerra).
     const stop = () => {
-      if (currentSfxKey() === 'hailmary') return;
+      // eventos "cinemáticos" (Hail Mary, supernova) rodam até o fim do áudio
+      const k = currentSfxKey();
+      if (k === 'hailmary' || k === 'supernova') return;
       stopAllSfx();
       sceneApiRef.current?.stopPetrova();
     };

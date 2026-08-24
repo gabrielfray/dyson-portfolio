@@ -8,7 +8,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import type { DysonSceneApi, DysonSceneOptions } from './types';
 import { createStarfield } from './starfield';
 import { createGalaxies } from './galaxies';
-import { createSun } from './sun';
+import { createSun, SN_BLAST_AT } from './sun';
 import { createDysonStructure, ud } from './rings';
 import { createPlanets, updatePlanets } from './planets';
 import { createAnomalies } from './anomalies';
@@ -326,7 +326,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
           renderer.domElement.style.cursor = manual ? 'grab' : '';
           opts.onManual?.(manual);
         }
-        if (coreClicks >= 100 && !sun.state.exploding) { sun.detonate(); coreClicks = 0; }
+        if (coreClicks >= 100 && !sun.state.exploding) { sun.detonate(); coreClicks = 0; opts.onDetonate?.(); }
         return;
       }
       // planeta -> revela o card (no toque não há hover)
@@ -431,7 +431,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
     // após a detonação, a onda de choque destrói os planetas (menos Plutão)
-    const blastT = sun.state.exploding && sun.state.et > 2.1 ? sun.state.et - 2.1 : -1;
+    const blastT = sun.state.exploding && sun.state.et > SN_BLAST_AT ? sun.state.et - SN_BLAST_AT : -1;
     updatePlanets(planets, dt, planetHover, blastT, ir);
     updateAnomalies(t, userZoom, ir);
     updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)

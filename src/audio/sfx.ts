@@ -110,11 +110,13 @@ const FILES: Record<string, string> = {
   voyager: 'voyager.mp3', // "Johnny B. Goode" — está no Golden Record da Voyager
   oumuamua: 'oumuamua.mp3',
   hailmary: 'hailmary.mp3', // refrão da música (fornecido pelo usuário)
+  supernova: 'supernova.mp3', // preparação + explosão (blast em ~11,9s do clipe)
 };
 // volume por arquivo (0-1); cai no padrão se não listado
 const FILE_VOLUME: Record<string, number> = {
   voyager: 0.08, // música — bem baixinho
   hailmary: 0.16,
+  supernova: 0.4, // explosão precisa de peso (clipe tem trilha baixa + blast em 0 dBFS)
 };
 const audioCache: Record<string, HTMLAudioElement> = {};
 let currentFile: HTMLAudioElement | null = null;
