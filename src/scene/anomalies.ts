@@ -228,7 +228,7 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
       new THREE.BoxGeometry(4, 16, 36),
       new THREE.MeshStandardMaterial({ color: 0x04050a, roughness: 0.15, metalness: 0.7, emissive: 0x0a0d16, emissiveIntensity: 0.5 }),
     );
-    mono.position.set(-820, 620, -1180); // bem longe, na borda superior
+    mono.position.set(1138, -910, 569); // r~1565, canto inferior-direito vazio (longe dos outros eggs)
     scene.add(mono);
     const pick = addPick(mono, 'monolith', 30);
     pick.scale.set(0.6, 1, 2);
