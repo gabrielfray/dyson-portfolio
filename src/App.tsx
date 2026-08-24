@@ -76,14 +76,27 @@ export default function App() {
         el2.style.opacity = '1';
         const card = planetCardRef.current;
         if (card) {
-          const rightSide = x > innerWidth * 0.58; // vira o card p/ não sair da tela
-          card.style.left = rightSide ? 'auto' : '46px';
-          card.style.right = rightSide ? '46px' : 'auto';
-          // abre p/ baixo se o objeto está na metade de cima; p/ cima se está embaixo
-          const below = y < innerHeight * 0.5;
-          card.style.top = below ? '18px' : 'auto';
-          card.style.bottom = below ? 'auto' : '18px';
-          card.style.transform = 'none';
+          if (innerWidth <= 560) {
+            // mobile: card ancorado no rodapé-centro (sempre cabe; o planeta fica
+            // visível acima). O overlay está em (x,y) -> compenso p/ posição de tela.
+            const cw = Math.min(240, innerWidth - 24), ch = card.offsetHeight || 240;
+            const cx = (innerWidth - cw) / 2;          // centralizado na horizontal
+            const cy = innerHeight - 92 - ch;          // acima da barra inferior de seções
+            card.style.left = `${cx - x}px`;
+            card.style.right = 'auto';
+            card.style.top = `${cy - y}px`;
+            card.style.bottom = 'auto';
+            card.style.transform = 'none';
+          } else {
+            const rightSide = x > innerWidth * 0.58; // vira o card p/ não sair da tela
+            card.style.left = rightSide ? 'auto' : '46px';
+            card.style.right = rightSide ? '46px' : 'auto';
+            // abre p/ baixo se o objeto está na metade de cima; p/ cima se está embaixo
+            const below = y < innerHeight * 0.5;
+            card.style.top = below ? '18px' : 'auto';
+            card.style.bottom = below ? 'auto' : '18px';
+            card.style.transform = 'none';
+          }
         }
       },
     });
@@ -118,7 +131,8 @@ export default function App() {
 
   const selId = sel != null ? SECTIONS[sel].id : null;
   const focused = sel != null;
-  const canvasShift = focused ? '-17%' : '0%';
+  // no mobile o painel é full-width -> não desloca o canvas (esfera fica centralizada)
+  const canvasShift = focused && innerWidth > 560 ? '-17%' : '0%';
   const legendWidth = focused ? 'calc(100vw - min(600px, 94vw))' : '100vw';
   const hasHover = !!hoverRing && sel == null;
   const hoverLabel = hoverRing ? (pt ? hoverRing.pt : hoverRing.en) : '';

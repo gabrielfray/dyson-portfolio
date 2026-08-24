@@ -44,10 +44,12 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // "lava" as cores. Replicamos o pipeline da r147 para bater com o design.
   THREE.ColorManagement.enabled = false;
 
+  const isMobile = innerWidth <= 560; // ajustes só p/ celular (desktop/tablet inalterados)
   const scene = new THREE.Scene();
   const bgColor = new THREE.Color(0x000000);
   scene.background = bgColor;
-  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 4000);
+  // FOV maior no mobile: enquadra mais a esfera de Dyson na tela estreita (retrato)
+  const camera = new THREE.PerspectiveCamera(isMobile ? 62 : 45, innerWidth / innerHeight, 0.1, 4000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -201,8 +203,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       moved = true;
       return;
     }
-    // toque de 1 dedo que se move -> passa a girar (sem precisar do modo manual)
-    if (!dragging && e.pointerType === 'touch' && pointers.size === 1 && lockedIdx < 0 &&
+    // toque de 1 dedo que se move -> passa a girar (tablets; no mobile é auto sempre)
+    if (!isMobile && !dragging && e.pointerType === 'touch' && pointers.size === 1 && lockedIdx < 0 &&
         Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6) {
       dragging = true;
       manual = true;
@@ -314,7 +316,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         const now = performance.now();
         coreClicks = now - lastCoreClick < 3000 ? coreClicks + 1 : 1;
         lastCoreClick = now;
-        if (coreClicks === 1) { // só o 1º clique alterna o manual (não pisca na sequência)
+        if (!isMobile && coreClicks === 1) { // no mobile não há modo manual (rotação automática sempre)
           manual = !manual;
           manualPhi = 0;
           renderer.domElement.style.cursor = manual ? 'grab' : '';

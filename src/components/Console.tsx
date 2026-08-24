@@ -12,10 +12,11 @@ const Wrap = styled.div`
   font-family: ${MONO};
   animation: fadeIn 1.4s ease 0.4s both;
   @media (max-width: 560px) {
-    top: max(58px, calc(env(safe-area-inset-top) + 44px));
-    left: 14px;
-    width: min(300px, 74vw);
-    font-size: 12px;
+    top: max(56px, calc(env(safe-area-inset-top) + 42px));
+    left: 12px;
+    width: 360px;            /* layout largo; o scale reduz o render p/ ~252px */
+    transform: scale(0.7);   /* encolhe tudo (inclui as linhas de tamanho inline) */
+    transform-origin: top left;
   }
 `;
 

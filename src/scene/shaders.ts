@@ -22,7 +22,8 @@ export const GLOW_VERT = `varying vec3 vN; varying vec3 vV; varying vec3 vP;
   void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0);
     vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz);
     vP = normalize(position); gl_Position = projectionMatrix*mv; }`;
-export const GLOW_FRAG = `varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime;
+export const GLOW_FRAG = `precision highp float;
+  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime;
   vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
   vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
   vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}

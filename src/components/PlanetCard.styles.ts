@@ -14,6 +14,11 @@ export const Card = styled.div`
   padding: 20px 22px;
   font-family: ${MONO};
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  @media (max-width: 560px) {
+    width: min(240px, calc(100vw - 24px));
+    padding: 13px 15px;
+    border-radius: 10px;
+  }
 `;
 
 export const Title = styled.div`
@@ -23,6 +28,7 @@ export const Title = styled.div`
   letter-spacing: 0.04em;
   text-transform: uppercase;
   min-height: 26px;
+  @media (max-width: 560px) { font-size: 17px; min-height: 20px; }
 `;
 
 export const Kind = styled.div`
