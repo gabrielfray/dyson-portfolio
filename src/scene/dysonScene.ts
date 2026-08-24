@@ -15,6 +15,29 @@ import { createAnomalies } from './anomalies';
 
 export type { Section, DysonSceneOptions, DysonSceneApi } from './types';
 
+// Fumaça vermelha do modo IR: esfera BackSide (fundo). Ruído de valor 3D + domain
+// warp amostrado no VETOR DE DIREÇÃO (sem costura/polos) -> filamentos enrolados.
+const SMOKE_VERT = `varying vec3 vDir;
+  void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const SMOKE_FRAG = `precision highp float;
+  uniform float uTime; uniform float uOpacity;
+  varying vec3 vDir;
+  float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float vnoise(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+  float fbm(vec3 p){ float s = 0.0, a = 0.5; for(int i = 0; i < 5; i++){ s += a * vnoise(p); p *= 2.0; a *= 0.5; } return s; }
+  void main(){
+    vec3 d = normalize(vDir) * 3.0; d.x += uTime * 0.02;
+    vec3 q = vec3(fbm(d), fbm(d + vec3(5.2,1.3,2.7)), fbm(d + vec3(1.7,9.2,4.4)));
+    float n = fbm(d + 4.0 * q); // domain warp -> filamentos
+    n = pow(clamp((n - 0.30) / 0.46, 0.0, 1.0), 1.25); // corta o vazio + alarga contraste
+    vec3 c0 = vec3(0.04, 0.012, 0.06); // quase-preto arroxeado
+    vec3 c1 = vec3(0.34, 0.03, 0.12);  // vinho
+    vec3 c2 = vec3(0.92, 0.26, 0.46);  // rosa
+    vec3 col = n < 0.5 ? mix(c0, c1, n / 0.5) : mix(c1, c2, (n - 0.5) / 0.5);
+    gl_FragColor = vec4(col, n * uOpacity); }`;
+
 export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions = {}): DysonSceneApi {
   // O artefato original foi feito com three r147: color management desligado e
   // saída linear. A partir da r152 vem ligado com saída sRGB por padrão, o que
@@ -22,7 +45,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   THREE.ColorManagement.enabled = false;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
+  const bgColor = new THREE.Color(0x000000);
+  scene.background = bgColor;
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 4000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
@@ -39,8 +63,72 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const sun = createSun(scene);
   const { dyson, shell, rings } = createDysonStructure(scene);
   const { planets, planetPick } = createPlanets(scene);
-  const { anomalies, update: updateAnomalies } = createAnomalies(scene, camera);
+  const { anomalies, update: updateAnomalies, trigger: triggerAnomaly } = createAnomalies(scene, camera);
   const anomalyPick = anomalies.map((a) => a.pick);
+
+  // Campo de astrófagos: só existe no modo IR (astrophage não emite no visível).
+  // Partículas fluindo por um cilindro grande, centrado na origem -> a câmera fica
+  // DENTRO da linha de Petrova (não olhando de fora).
+  const astroDot = (() => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const cx = cv.getContext('2d')!;
+    const gg = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gg.addColorStop(0, 'rgba(255,255,255,1)');
+    gg.addColorStop(0.4, 'rgba(255,220,200,0.6)');
+    gg.addColorStop(1, 'rgba(255,180,150,0)');
+    cx.fillStyle = gg;
+    cx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(cv);
+  })();
+  // nuvem ESFÉRICA ao redor da cena -> preenche a tela toda (bokeh dos que ficam
+  // perto + specks dos distantes, via sizeAttenuation). A nuvem gira bem devagar.
+  const ASTRO_N = 9000;
+  const astroPos = new Float32Array(ASTRO_N * 3), astroCol = new Float32Array(ASTRO_N * 3);
+  const _ad = new THREE.Vector3();
+  for (let i = 0; i < ASTRO_N; i++) {
+    _ad.randomDirection();
+    const r = 200 + Math.pow(Math.random(), 0.7) * 1600;
+    astroPos[i * 3] = _ad.x * r; astroPos[i * 3 + 1] = _ad.y * r; astroPos[i * 3 + 2] = _ad.z * r;
+    const tmp = Math.random(); // vermelho -> rosa
+    astroCol[i * 3] = 1;
+    astroCol[i * 3 + 1] = 0.22 + tmp * 0.42;
+    astroCol[i * 3 + 2] = 0.28 + tmp * 0.4;
+  }
+  const astroGeo = new THREE.BufferGeometry();
+  astroGeo.setAttribute('position', new THREE.BufferAttribute(astroPos, 3));
+  astroGeo.setAttribute('color', new THREE.BufferAttribute(astroCol, 3));
+  const astroMat = new THREE.PointsMaterial({ size: 7, map: astroDot, vertexColors: true, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+  const astro = new THREE.Points(astroGeo, astroMat);
+  astro.visible = false;
+  astro.frustumCulled = false;
+  scene.add(astro);
+  const updateAstro = (_t: number, ir: number) => {
+    if (ir <= 0.02) { if (astro.visible) astro.visible = false; return; }
+    astro.visible = true;
+    astroMat.opacity = ir * 0.6;
+    astro.rotation.y = _t * 0.012; // deriva bem lenta da nuvem toda
+  };
+
+  // Fumaça vermelha (fundo do modo IR): esfera BackSide seguindo a câmera (skybox,
+  // sem parallax). É literalmente o fundo — sem depthWrite, resolução "infinita".
+  const smokeMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uOpacity: { value: 0 } },
+    vertexShader: SMOKE_VERT, fragmentShader: SMOKE_FRAG,
+    side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: false,
+  });
+  const smoke = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 32), smokeMat);
+  smoke.renderOrder = -1;
+  smoke.frustumCulled = false;
+  smoke.visible = false;
+  scene.add(smoke);
+  const updateSmoke = (t: number, ir: number) => {
+    if (ir <= 0.02) { if (smoke.visible) smoke.visible = false; return; }
+    smoke.visible = true;
+    smoke.position.copy(camera.position); // skybox: acompanha a câmera
+    smokeMat.uniforms.uTime.value = t;
+    smokeMat.uniforms.uOpacity.value = ir;
+  };
 
   // ---------- Interatividade: anéis como portais de navegação ----------
   const sections = opts.sections || [];
@@ -61,6 +149,11 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
+  let irStart = -1, irStopAt = -1; // modo infravermelho (véus / linha de Petrova)
+  const ESPECTRO = { drainDepth: 0.85, fade: 2.4, maxHold: 90 }; // drainDepth = profundidade do vale (0.93 ~ preto total); fade = saída suave; maxHold = segurança
+  const startPetrova = () => { irStart = clock.getElapsedTime(); irStopAt = -1; };
+  const stopPetrova = () => { if (irStart >= 0 && irStopAt < 0) irStopAt = clock.getElapsedTime(); }; // fade suave
+  const smoothstep = (a: number, b: number, x: number) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
   // multi-touch: mapa de dedos ativos + estado da pinça (zoom)
   const pointers = new Map<number, { x: number; y: number }>();
   let pinching = false, pinchDist0 = 0, pinchZoom0 = 0;
@@ -246,6 +339,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         clearPlanetHover();
         if (anomalyHover !== idx) { anomalyHover = idx; opts.onAnomalyHover?.(key); }
         opts.onAnomalyClick?.(key);
+        triggerAnomaly(key); // efeito de cena (ex.: linha de Petrova do Hail Mary)
+        if (key === 'hailmary') startPetrova(); // liga o modo IR (véus + Petrova)
         return;
       }
       // anel -> abre a seção
@@ -309,15 +404,32 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const dt = Math.min(t - lastT, 0.05); // clamp evita salto ao voltar de aba inativa
     lastT = t;
 
-    stars.update(t);
-    sun.update(t, dt);
+    // modo infravermelho (Hail Mary) — troca de detector com o "vale escuro":
+    // tudo despenca (fundo do vale ~15% de brilho ~1,2s), e só DEPOIS a emissão
+    // térmica (vermelho) sobe. É o vazio no meio que vira acontecimento.
+    let ir = 0, drain = 0;
+    if (irStart >= 0) {
+      const e = t - irStart;
+      const fall = smoothstep(0, 1.0, e);       // brilho cai até o fundo (~1s)
+      const rise = smoothstep(1.2, 2.6, e);     // alivia depois do fundo
+      const up = smoothstep(1.2, 2.4, e);       // emissão térmica sobe após o vale
+      const down = irStopAt >= 0 ? smoothstep(irStopAt, irStopAt + ESPECTRO.fade, t) : 0; // saída suave
+      drain = ESPECTRO.drainDepth * fall * (1 - rise * 0.82) * (1 - down);
+      ir = up * (1 - down);
+      if (irStopAt >= 0 && t >= irStopAt + ESPECTRO.fade) { irStart = -1; irStopAt = -1; }
+      else if (irStopAt < 0 && e > ESPECTRO.maxHold) irStopAt = t; // segurança (música não terminou)
+    }
+    stars.update(t, ir);
+    sun.update(t, dt, ir);
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
     // após a detonação, a onda de choque destrói os planetas (menos Plutão)
     const blastT = sun.state.exploding && sun.state.et > 2.1 ? sun.state.et - 2.1 : -1;
     updatePlanets(planets, dt, planetHover, blastT);
-    updateAnomalies(t);
+    updateAnomalies(t, userZoom, ir);
+    updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)
+    updateAstro(t, ir); // brilho de fundo (só no IR)
     // rastreia na tela o objeto sob o cursor (planeta OU anomalia)
     const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
     if (tracked && opts.onPlanetTrack) {
@@ -353,8 +465,10 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     camera.lookAt(0, scrollP * -6, 0);
     // supernova: pico de bloom/exposição no flash + tremor de câmera
     const sState = sun.state;
-    bloom.strength = bloomBase + sState.flash * 3.2;
-    renderer.toneMappingExposure = 1.1 + sState.flash * 1.6;
+    // drain = escurece tudo brevemente (troca de detector); ir = leve dim sustentado
+    const dimMul = (1 - drain * 0.88) * (1 - ir * 0.15);
+    bloom.strength = (bloomBase + sState.flash * 3.2) * (1 - drain * 0.9);
+    renderer.toneMappingExposure = (1.1 + sState.flash * 1.6) * dimMul;
     if (sState.shake > 0.001) {
       camera.position.x += (Math.random() - 0.5) * sState.shake * 9;
       camera.position.y += (Math.random() - 0.5) * sState.shake * 9;
@@ -369,6 +483,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     setBloom(v: number) { bloomBase = v; },
     setFocus(f: number) { targetFocus = f; },
     startIntro() { introActive = true; },
+    stopPetrova() { stopPetrova(); },
     setLocked(i: number) {
       if (lockedIdx >= 0 && rings[lockedIdx]) {
         const m = ud(rings[lockedIdx]).mat;

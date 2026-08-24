@@ -74,6 +74,15 @@ export function AnomalyCard({ anomKey, lang, innerRef }: { anomKey: string; lang
       await sleep(120); // deixa o estado inicial (limpo via key) assentar
       if (glitchNow) {
         setCaret('kind'); // nome fica embaralhando, pula direto p/ o tipo
+      } else if (info.alias) {
+        // trocadilho: digita a designação, hesita, apaga e escreve o apelido
+        for (let i = 1; i <= info.name.length; i++) { if (cancelled) return; setNameShown(info.name.slice(0, i)); await sleep(40); }
+        await sleep(750);
+        for (let i = info.name.length - 1; i >= 0; i--) { if (cancelled) return; setNameShown(info.name.slice(0, i)); await sleep(32); }
+        await sleep(220);
+        for (let i = 1; i <= info.alias.length; i++) { if (cancelled) return; setNameShown(info.alias.slice(0, i)); await sleep(46); }
+        await sleep(160);
+        setCaret('kind');
       } else {
         for (let i = 1; i <= info.name.length; i++) { if (cancelled) return; setNameShown(info.name.slice(0, i)); await sleep(28); }
         await sleep(160);

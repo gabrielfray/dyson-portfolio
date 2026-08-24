@@ -9,9 +9,13 @@ export const STAR_VERT = `attribute float aSize; attribute float aPhase; attribu
     vec4 mv = modelViewMatrix*vec4(position,1.0);
     gl_PointSize = aSize*(300.0/-mv.z)*(0.85+0.3*tw);
     gl_Position = projectionMatrix*mv; }`;
-export const STAR_FRAG = `uniform sampler2D uMap; varying vec3 vColor; varying float vTwinkle;
+export const STAR_FRAG = `uniform sampler2D uMap; uniform float uIr; varying vec3 vColor; varying float vTwinkle;
   void main(){ vec4 tex = texture2D(uMap, gl_PointCoord);
-    gl_FragColor = vec4(vColor*vTwinkle, tex.a); }`;
+    vec3 c = vColor*vTwinkle;
+    float lum = dot(c, vec3(0.299,0.587,0.114));
+    vec3 ir = vec3(pow(lum,0.65)*1.5, lum*0.22, lum*0.10); // troca de detector: leitura infravermelha
+    c = mix(c, ir, uIr);
+    gl_FragColor = vec4(c, tex.a); }`;
 
 // Sol: plasma procedural (simplex noise + fbm), fresnel no núcleo, pulso.
 export const GLOW_VERT = `varying vec3 vN; varying vec3 vV; varying vec3 vP;

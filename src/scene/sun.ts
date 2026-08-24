@@ -31,7 +31,7 @@ export interface SunState { exploding: boolean; et: number; flash: number; shake
 // Cria a estrela: núcleo de plasma (shader), disco brilhante, coronas/aura e as
 // luzes da cena. Também prepara a supernova (casca + onda de choque + detritos),
 // disparada por detonate(). O update anima pulso normal OU a explosão.
-export function createSun(scene: THREE.Scene): { update: (t: number, dt: number) => void; detonate: () => void; state: SunState } {
+export function createSun(scene: THREE.Scene): { update: (t: number, dt: number, ir?: number) => void; detonate: () => void; state: SunState } {
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(10, 64, 64),
     new THREE.ShaderMaterial({
@@ -58,7 +58,8 @@ export function createSun(scene: THREE.Scene): { update: (t: number, dt: number)
 
   const sunLight = new THREE.PointLight(0xfff4ea, 2400, 0, 2);
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0x1a2836, 2.6));
+  const ambient = new THREE.AmbientLight(0x1a2836, 2.6);
+  scene.add(ambient);
   const coolFill = new THREE.DirectionalLight(0x9fc4ff, 0.5);
   coolFill.position.set(-1, 0.6, 0.8);
   scene.add(coolFill);
@@ -108,15 +109,24 @@ export function createSun(scene: THREE.Scene): { update: (t: number, dt: number)
       state.exploding = true;
       state.et = 0;
     },
-    update: (t, dt) => {
+    update: (t, dt, ir = 0) => {
       (glow.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
 
       if (!state.exploding) {
-        sun.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
+        sun.scale.setScalar((1 + Math.sin(t * 1.3) * 0.03) * (1 - ir * 0.62));
         corona.scale.setScalar(SUN_R * 9 * (1 + Math.sin(t * 0.9) * 0.05));
         corona2.scale.setScalar(SUN_R * 4.5 * (1 + Math.sin(t * 1.4) * 0.06));
         aura.scale.setScalar(SUN_R * 13 * (1 + Math.sin(t * 0.5) * 0.08));
-        aura.material.opacity = 0.38 + 0.08 * Math.sin(t * 0.7);
+        aura.material.opacity = (0.38 + 0.08 * Math.sin(t * 0.7)) * (1 - ir);
+        // modo IR: o núcleo (estrela) apaga e as luzes migram p/ vermelho
+        corona.material.opacity = 1 - ir;
+        corona2.material.opacity = 0.85 * (1 - ir);
+        glow.scale.setScalar(Math.max(0.05, 1 - ir * 0.85));
+        sunMat.color.setRGB(1 - 0.8 * ir, 0.945 - 0.85 * ir, 0.784 - 0.7 * ir);
+        sunLight.color.setRGB(1, 0.30 + 0.66 * (1 - ir), 0.20 + 0.72 * (1 - ir));
+        sunLight.intensity = 2400 * (1 - ir * 0.8);
+        ambient.color.setRGB(0.10 + 0.16 * ir, 0.157 * (1 - ir), 0.212 * (1 - ir));
+        coolFill.intensity = 0.5 * (1 - ir);
         return;
       }
 

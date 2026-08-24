@@ -19,6 +19,101 @@ function glowTexture(inner: string, outer: string) {
   return new THREE.CanvasTexture(c);
 }
 
+// Textura procedural de Adrian: ruído isotrópico com DOMAIN WARPING (aspecto de
+// tinta na água, tipo os polos de Júpiter — sem bandas), paleta de 5 paradas e
+// tempestades laranja como objetos (máscara radial + warp interno). Gerada 1x.
+function adrianTexture() {
+  const S = 768;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(S, S);
+  const d = img.data;
+  const hash = (x: number, y: number) => {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h = h ^ (h >>> 16);
+    return (h >>> 0) / 4294967295;
+  };
+  const vnoise = (x: number, y: number) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), e = hash(xi, yi + 1), f = hash(xi + 1, yi + 1);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + e * (1 - u) * v + f * u * v;
+  };
+  const fbm = (x: number, y: number) => {
+    let sum = 0, amp = 0.5, fr = 1;
+    for (let o = 0; o < 4; o++) { sum += amp * vnoise(x * fr, y * fr); fr *= 2; amp *= 0.5; }
+    return sum;
+  };
+  const warp = (x: number, y: number) => { // fbm(p + fbm(p + fbm(p)))
+    const q1 = fbm(x, y), q2 = fbm(x + 5.2, y + 1.3);
+    const r1 = fbm(x + 4 * q1, y + 4 * q2), r2 = fbm(x + 4 * q1 + 1.7, y + 4 * q2 + 9.2);
+    return fbm(x + 4 * r1, y + 4 * r2);
+  };
+  const stops = [[0, 7, 16, 24], [0.3, 18, 58, 30], [0.55, 47, 122, 52], [0.8, 130, 220, 62], [1, 235, 255, 195]];
+  const pal = (n: number): [number, number, number] => {
+    for (let i = 1; i < stops.length; i++) {
+      if (n <= stops[i][0]) { const a = stops[i - 1], b = stops[i], t = (n - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t]; }
+    }
+    return [235, 255, 195];
+  };
+  const storms = Array.from({ length: 4 }, () => ({ x: Math.random() * S, y: S * (0.2 + Math.random() * 0.6), r: 90 + Math.random() * 140, seed: Math.random() * 20 }));
+  const FREQ = 4;
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      const x = (px / S) * FREQ, y = (py / S) * FREQ;
+      const n = Math.min(1, Math.max(0, warp(x, y) * 1.25)); // realça contraste
+      const col = pal(n);
+      let oa = 0, osn = 0;
+      for (const st of storms) {
+        const dx = px - st.x, dy = py - st.y, dd = Math.sqrt(dx * dx + dy * dy) / st.r;
+        if (dd < 1) { const mask = 1 - dd * dd * (3 - 2 * dd); osn = warp(x * 1.7 + st.seed, y * 1.7 + st.seed); oa += mask * (0.35 + 0.65 * osn); }
+      }
+      if (oa > 0) { const m = Math.min(1, oa); col[0] += (95 + 150 * osn - col[0]) * m; col[1] += (32 + 118 * osn - col[1]) * m; col[2] += (8 + 42 * osn - col[2]) * m; }
+      const idx = (py * S + px) * 4;
+      d[idx] = col[0]; d[idx + 1] = col[1]; d[idx + 2] = col[2]; d[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
+// Shader do Adrian: iluminado pela estrela local, limb darkening agressivo
+// (pow(N·L, 0.6)) e lado escuro indo a ~0 -> terminador forte.
+const ADRIAN_VERT = `varying vec3 vWorld; varying vec3 vN; varying vec2 vUv;
+  void main(){ vUv = uv; vec4 wp = modelMatrix * vec4(position,1.0); vWorld = wp.xyz;
+    vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * wp; }`;
+const ADRIAN_FRAG = `uniform sampler2D uMap; uniform vec3 uLightPos; uniform float uOpacity; uniform float uIr;
+  varying vec3 vWorld; varying vec3 vN; varying vec2 vUv;
+  void main(){ vec3 L = normalize(uLightPos - vWorld);
+    float lit = pow(max(dot(normalize(vN), L), 0.0), 0.6);
+    vec3 tex = texture2D(uMap, vUv).rgb;
+    // visível: albedo verde iluminado. IR: albedo morre e a EMISSÃO TÉRMICA sobe
+    // (independe da luz -> o lado noturno acende), remapeada p/ vermelho/laranja.
+    vec3 albedo = mix(tex, tex * vec3(0.9, 0.3, 0.2) * 0.35, uIr);
+    vec3 lighting = albedo * (lit + 0.012);
+    vec3 e = tex * (uIr * 2.05);
+    vec3 emissive = vec3(e.r * 0.95 + e.g * 0.7, e.g * 0.24, e.b * 0.35);
+    gl_FragColor = vec4(lighting + emissive, uOpacity); }`;
+
+// Fita da linha de Petrova: strip que lê a mesma espinha (LUT) e é extrudada em
+// ESPAÇO DE VISTA (cross(tangente, direção da câmera)) -> sempre encara você.
+// Sem núcleo (banda macia), só pra dar coesão às partículas.
+const RIBBON_VERT = `attribute float aSide; attribute vec3 aTangent; uniform float uWidth;
+  varying float vSide; varying float vU;
+  void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec3 tanV = normalize((modelViewMatrix * vec4(aTangent, 0.0)).xyz);
+    vec3 dir = normalize(cross(tanV, vec3(0.0, 0.0, 1.0)));
+    mv.xyz += dir * aSide * uWidth;
+    vSide = aSide; vU = uv.x;
+    gl_Position = projectionMatrix * mv; }`;
+const RIBBON_FRAG = `precision mediump float;
+  uniform float uOpacity; uniform vec3 uColor;
+  varying float vSide; varying float vU;
+  void main(){ float across = 1.0 - abs(vSide); float ends = sin(vU * 3.14159);
+    gl_FragColor = vec4(uColor, pow(max(across, 0.0), 1.4) * ends * uOpacity); }`;
+
 const HIDDEN = new THREE.MeshBasicMaterial({ visible: false });
 const addPick = (body: THREE.Object3D, key: string, radius: number) => {
   const pick = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 8), HIDDEN);
@@ -29,9 +124,10 @@ const addPick = (body: THREE.Object3D, key: string, radius: number) => {
 
 // Objetos especiais / easter eggs espalhados bem longe (achados no zoom out).
 // Cada um: um corpo visual + uma esfera de hit invisível p/ o raycast.
-export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { anomalies: Anomaly[]; update: (t: number) => void } {
+export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { anomalies: Anomaly[]; update: (t: number, zoom?: number, ir?: number) => void; trigger: (key: string) => void } {
   const anomalies: Anomaly[] = [];
-  const updaters: ((t: number) => void)[] = [];
+  const updaters: ((t: number, zoom: number, ir: number) => void)[] = [];
+  const triggers: Record<string, () => void> = {}; // efeitos acionados por clique (ex.: Petrova)
 
   // --- Objeto não identificado: pequeno, escuro e discreto, bem escondido ---
   {
@@ -340,8 +436,206 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     });
   }
 
+  // --- Project Hail Mary (Devoradores de Estrelas) ---
+  // Planeta Adrian (Tau Ceti e) com a nave orbitando e a estrela Tau Ceti ao lado.
+  // Ao clicar, acende a "linha de Petrova" (fluxo de astrophage) da estrela ao planeta.
+  {
+    const g = new THREE.Group();
+    g.position.set(-900, 560, -1000); // bem longe, num canto (r ~ 1460)
+
+    const PR = 15;
+    const adrianMap = adrianTexture();
+    const planetMat = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: adrianMap }, uLightPos: { value: new THREE.Vector3() }, uOpacity: { value: 1 }, uIr: { value: 0 } },
+      vertexShader: ADRIAN_VERT, fragmentShader: ADRIAN_FRAG, transparent: true,
+    });
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(PR, 96, 64), planetMat);
+    g.add(planet);
+    // halo externo suave (sem o anel neon — só um brilho leve na borda)
+    const atmoMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(150,255,110,0.28)', 'rgba(80,200,80,0.05)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const atmo = new THREE.Sprite(atmoMat);
+    atmo.scale.setScalar(PR * 3);
+    g.add(atmo);
+
+    // nave Hail Mary: 3 tanques (cápsulas com domos) + sinos de motor + módulo de
+    // tripulação na frente + painéis. Modelagem só do formato geral (fiel à silhueta).
+    const ship = new THREE.Group();
+    const shipMat = new THREE.MeshStandardMaterial({ color: 0xe6e3da, metalness: 0.35, roughness: 0.55, emissive: 0x30302c, emissiveIntensity: 0.65, transparent: true });
+    const dishMat = new THREE.MeshStandardMaterial({ color: 0x8f8c84, metalness: 0.45, roughness: 0.6, emissive: 0x1c1c1a, emissiveIntensity: 0.6, transparent: true });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.6, roughness: 0.4, emissive: 0x2c2208, emissiveIntensity: 0.6, transparent: true });
+
+    // spine central
+    const spine = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 9, 4, 10), shipMat);
+    spine.rotation.z = Math.PI / 2;
+    ship.add(spine);
+
+    // 3 tanques de combustível (astrophage) ao redor do spine, a 120°
+    const tankGeo = new THREE.CapsuleGeometry(0.85, 6.4, 6, 14);
+    const bellGeo = new THREE.ConeGeometry(0.82, 1.5, 14, 1, true);
+    const bandGeo = new THREE.CylinderGeometry(0.92, 0.92, 0.5, 14);
+    for (let k = 0; k < 3; k++) {
+      const ang = Math.PI / 2 + k * (Math.PI * 2 / 3);
+      const ty = Math.cos(ang) * 1.5, tz = Math.sin(ang) * 1.5;
+      const tank = new THREE.Mesh(tankGeo, shipMat);
+      tank.rotation.z = Math.PI / 2;
+      tank.position.set(-0.4, ty, tz);
+      ship.add(tank);
+      const band = new THREE.Mesh(bandGeo, goldMat); // faixa dourada
+      band.rotation.z = Math.PI / 2;
+      band.position.set(1.4, ty, tz);
+      ship.add(band);
+      const bell = new THREE.Mesh(bellGeo, dishMat); // sino do motor atrás
+      bell.rotation.z = Math.PI / 2;
+      bell.position.set(-4.6, ty, tz);
+      ship.add(bell);
+    }
+
+    // módulo de tripulação na frente (cápsula maior)
+    const crew = new THREE.Mesh(new THREE.CapsuleGeometry(1.15, 3, 6, 14), shipMat);
+    crew.rotation.z = Math.PI / 2;
+    crew.position.x = 5.4;
+    ship.add(crew);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.5, 16), goldMat);
+    collar.rotation.z = Math.PI / 2;
+    collar.position.x = 3.6;
+    ship.add(collar);
+
+    // painéis solares / radiadores
+    const panelGeo = new THREE.BoxGeometry(3.6, 0.08, 1.7);
+    for (const sgn of [1, -1]) {
+      const panel = new THREE.Mesh(panelGeo, dishMat);
+      panel.position.set(0.6, 0, sgn * 2.9);
+      ship.add(panel);
+    }
+    g.add(ship);
+
+    // estrela Tau Ceti (ponto brilhante ao lado, no espaço local do egg)
+    const starPos = new THREE.Vector3(300, -150, 80);
+    const starMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,224,224,0.95)', 'rgba(255,90,120,0.35)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const star = new THREE.Sprite(starMat);
+    star.position.copy(starPos);
+    star.scale.setScalar(30);
+    g.add(star);
+    // o shader do Adrian é iluminado por Tau Ceti (posição de mundo da estrela)
+    planetMat.uniforms.uLightPos.value.copy(g.position).add(starPos);
+    const fadeMats = [atmoMat, shipMat, dishMat, goldMat, starMat]; // .opacity (planeta/anel usam uOpacity)
+
+    scene.add(g);
+    const pick = addPick(g, 'hailmary', 30);
+    anomalies.push({ key: 'hailmary', body: g, pick });
+
+    // ===== Linha de Petrova (4 camadas): espinha LUT + partículas + fitas =====
+    // 1) Espinha: curva Catmull-Rom da estrela (P0) ao planeta (P2), amostrada numa
+    // LUT com base perpendicular (A,B). A LUT é re-ondulada por quadro (2 fbm1) e
+    // ancorada nas pontas por pow(sin(u·π),0.9) -> serpenteia no meio, grudada nas pontas.
+    const P0 = starPos.clone(), P2 = new THREE.Vector3(0, 0, 0);
+    const spineCurve = new THREE.CatmullRomCurve3([
+      P0.clone(),
+      P0.clone().lerp(P2, 0.22).add(new THREE.Vector3(-24, 70, 34)),
+      P0.clone().lerp(P2, 0.44).add(new THREE.Vector3(22, 116, -18)),
+      P0.clone().lerp(P2, 0.66).add(new THREE.Vector3(-14, 88, 46)),
+      P0.clone().lerp(P2, 0.85).add(new THREE.Vector3(12, 36, 12)),
+      P2.clone(),
+    ]);
+    const LUT_N = 320;
+    const lutBase: THREE.Vector3[] = [], lutPos: THREE.Vector3[] = [], lutA: THREE.Vector3[] = [], lutB: THREE.Vector3[] = [], lutTan: THREE.Vector3[] = [];
+    const UPV = new THREE.Vector3(0, 1, 0), ALTV = new THREE.Vector3(1, 0, 0);
+    for (let i = 0; i < LUT_N; i++) {
+      const u = i / (LUT_N - 1);
+      lutBase.push(spineCurve.getPointAt(u));
+      lutPos.push(new THREE.Vector3());
+      const tan = spineCurve.getTangentAt(u); lutTan.push(tan.clone());
+      const a = new THREE.Vector3().crossVectors(tan, Math.abs(tan.y) > 0.9 ? ALTV : UPV).normalize();
+      lutA.push(a); lutB.push(new THREE.Vector3().crossVectors(tan, a).normalize());
+    }
+    // fbm 1D (JS) p/ a ondulação da espinha
+    const h1 = (x: number) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
+    const vn1 = (x: number) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return h1(i) * (1 - u) + h1(i + 1) * u; };
+    const fbm1 = (x: number) => { let s = 0, a = 0.5, fr = 1; for (let o = 0; o < 4; o++) { s += a * vn1(x * fr); fr *= 2; a *= 0.5; } return s; };
+    const AMP = 24; // amplitude da serpentina (era 55 -> ficava agitado demais)
+    const rebuildLUT = (t: number) => {
+      for (let i = 0; i < LUT_N; i++) {
+        const u = i / (LUT_N - 1);
+        const anchor = Math.pow(Math.sin(u * Math.PI), 0.9); // zero nas pontas -> gruda na estrela/planeta
+        const dA = (fbm1(u * 4 + t * 0.16) - 0.5) * 2 * AMP * anchor; // bem mais lento e ondas mais longas
+        const dB = (fbm1(u * 4 + 100 - t * 0.14) - 0.5) * 2 * AMP * anchor;
+        lutPos[i].copy(lutBase[i]).addScaledVector(lutA[i], dA).addScaledVector(lutB[i], dB);
+      }
+    };
+
+    // (Sem partículas coladas na linha — a linha é a fita; as partículas ficam só
+    // no campo global espalhado pela tela.)
+
+    // A linha é feita de fitas (lêem a LUT, extrusão em espaço de vista): um fio
+    // central brilhante + 2 faixas de brilho ao redor. Sem partículas coladas.
+    const ribbonCfg = [
+      { w: 6, o: 0.95, c: 0xffc0d4 },  // fio central quente
+      { w: 22, o: 0.5, c: 0xff3a6a },  // brilho médio
+      { w: 56, o: 0.2, c: 0xcf1440 },  // halo largo
+    ];
+    const ribbons = ribbonCfg.map((cfg) => {
+      const width = cfg.w;
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(LUT_N * 6), side = new Float32Array(LUT_N * 2), tan = new Float32Array(LUT_N * 6), uv = new Float32Array(LUT_N * 4);
+      const idx: number[] = [];
+      for (let i = 0; i < LUT_N; i++) {
+        side[i * 2] = -1; side[i * 2 + 1] = 1;
+        const u = i / (LUT_N - 1);
+        uv[i * 4] = u; uv[i * 4 + 2] = u;
+        tan.set([lutTan[i].x, lutTan[i].y, lutTan[i].z], i * 6);
+        tan.set([lutTan[i].x, lutTan[i].y, lutTan[i].z], i * 6 + 3);
+        if (i < LUT_N - 1) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('aSide', new THREE.BufferAttribute(side, 1));
+      geo.setAttribute('aTangent', new THREE.BufferAttribute(tan, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { uWidth: { value: width }, uOpacity: { value: 0 }, uColor: { value: new THREE.Color(cfg.c) } },
+        vertexShader: RIBBON_VERT, fragmentShader: RIBBON_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.frustumCulled = false; mesh.visible = false;
+      g.add(mesh);
+      return { geo, mat, mesh, pos, base: cfg.o };
+    });
+
+    let vis = 0;
+    updaters.push((t, _zoom = 0, ir = 0) => {
+      // só surge no zoom out avançado (fade suave); some ao dar zoom in
+      const target = Math.min(1, Math.max(0, (_zoom - 760) / 340)); // só surge no zoom out avançado
+      vis += (target - vis) * 0.08; // fade suave
+      g.visible = vis > 0.01;
+      g.scale.setScalar(0.7 + 0.3 * vis); // surge com um leve "crescer"
+      for (const m of fadeMats) m.opacity = vis;
+      planetMat.uniforms.uOpacity.value = vis;
+      planetMat.uniforms.uIr.value = ir; // IR: lado noturno acende (emissão térmica)
+      pick.layers.set(vis > 0.35 ? 0 : 1); // só clicável quando visível
+      if (!g.visible) return;
+
+      planet.rotation.y = t * 0.15;
+      const oa = t * 0.6;
+      ship.position.set(Math.cos(oa) * 28, Math.sin(oa * 0.7) * 7, Math.sin(oa) * 28);
+      ship.rotation.y = -oa;
+
+      const on = ir > 0.02; // linha de Petrova existe enquanto o modo IR estiver ativo
+      for (const rb of ribbons) rb.mesh.visible = on;
+      if (on) {
+        rebuildLUT(t); // re-ondula a espinha (fonte única das fitas)
+        // fitas copiam a posição da LUT + opacidade (a linha em si; sem partículas coladas)
+        for (const rb of ribbons) {
+          for (let i = 0; i < LUT_N; i++) { const p = lutPos[i], o = i * 6; rb.pos[o] = p.x; rb.pos[o + 1] = p.y; rb.pos[o + 2] = p.z; rb.pos[o + 3] = p.x; rb.pos[o + 4] = p.y; rb.pos[o + 5] = p.z; }
+          rb.geo.attributes.position.needsUpdate = true;
+          rb.mat.uniforms.uOpacity.value = ir * vis * rb.base;
+        }
+      }
+    });
+  }
+
   return {
     anomalies,
-    update: (t) => updaters.forEach((u) => u(t)),
+    update: (t, zoom = 0, ir = 0) => updaters.forEach((u) => u(t, zoom, ir)),
+    trigger: (key) => triggers[key]?.(),
   };
 }

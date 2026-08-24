@@ -24,5 +24,6 @@ export interface DysonSceneApi {
   setFocus: (f: number) => void;
   setLocked: (i: number) => void;
   startIntro: () => void; // dispara o fly-in cinematográfico da câmera
+  stopPetrova: () => void; // encerra o modo IR/véus com fade suave (fim da música ou clique)
   dispose: () => void;
 }

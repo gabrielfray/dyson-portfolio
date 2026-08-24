@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -107,9 +107,13 @@ export default function App() {
   // clique da cena que toca o som do easter egg). Assim: clicar no objeto toca;
   // clicar em qualquer outro lugar só para.
   useEffect(() => {
-    const stop = () => stopAllSfx();
-    window.addEventListener('click', stop, true);
-    return () => window.removeEventListener('click', stop, true);
+    // pointerdown (não 'click'): dispara em qualquer toque/press, mesmo que vire
+    // arraste -> qualquer interação encerra música + modo IR com fade suave.
+    const stop = () => { stopAllSfx(); sceneApiRef.current?.stopPetrova(); };
+    window.addEventListener('pointerdown', stop, true);
+    // fim da música do Hail Mary -> encerra o modo IR/véus com fade suave
+    setOnFileEnded(() => sceneApiRef.current?.stopPetrova());
+    return () => { window.removeEventListener('pointerdown', stop, true); setOnFileEnded(null); };
   }, []);
 
   const selId = sel != null ? SECTIONS[sel].id : null;

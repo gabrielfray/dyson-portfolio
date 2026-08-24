@@ -42,8 +42,8 @@ function pickStarColor() {
 
 // Cria as três camadas de estrelas (esfera próxima, esfera distante e um disco
 // tipo "via láctea") e devolve um update que anima a cintilação por tempo.
-export function createStarfield(scene: THREE.Scene): { update: (t: number) => void } {
-  const starUniforms = { uTime: { value: 0 }, uMap: { value: starTexture() } };
+export function createStarfield(scene: THREE.Scene): { update: (t: number, ir?: number) => void } {
+  const starUniforms = { uTime: { value: 0 }, uMap: { value: starTexture() }, uIr: { value: 0 } };
   const starMat = new THREE.ShaderMaterial({
     uniforms: starUniforms,
     transparent: true,
@@ -96,5 +96,5 @@ export function createStarfield(scene: THREE.Scene): { update: (t: number) => vo
     tw[i] = 0.1 + Math.random() * 0.2;
   }));
 
-  return { update: (t) => { starUniforms.uTime.value = t; } };
+  return { update: (t, ir = 0) => { starUniforms.uTime.value = t; starUniforms.uIr.value = ir; } };
 }

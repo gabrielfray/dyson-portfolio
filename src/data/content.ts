@@ -119,6 +119,7 @@ export function getIntro(lang: Lang): IntroText {
 // ---------- Anomalias / easter eggs (objetos especiais no fundo) ----------
 export interface AnomalyInfo {
   name: string;
+  alias?: string; // se presente: digita name, apaga e escreve alias (trocadilho)
   kind: string;
   rows: { label: string; value: string }[];
   status?: string; // linha destacada, não tarjada (ex.: CLASSIFICADO)
@@ -195,6 +196,20 @@ export function getAnomaly(key: string, lang: Lang): AnomalyInfo {
           { label: 'STATUS', value: T('em trânsito', 'in transit') },
         ],
         note: T('"Wibbly-wobbly… timey-wimey."', '"Wibbly-wobbly… timey-wimey."'),
+      };
+    case 'hailmary':
+      return {
+        name: 'Tau Ceti e',
+        alias: 'Adrian', // apelido dado por Grace e Rocky
+        kind: T('planeta · 1,4 G · 91% CO₂', 'planet · 1.4 G · 91% CO₂'),
+        rows: [
+          { label: T('DESIGNAÇÃO', 'DESIGNATION'), value: 'Tau Ceti e' },
+          { label: T('ESTRELA', 'STAR'), value: 'Tau Ceti' },
+          { label: T('AMEAÇA', 'THREAT'), value: T('astrófago', 'astrophage') },
+          { label: T('PREDADOR', 'PREDATOR'), value: 'Taumoeba' }, // nome próprio (Grace) — não traduz
+          { label: 'STATUS', value: T('linha de Petrova estável', 'Petrova line stable') },
+        ],
+        note: '"We save worlds, friend. We save everything." — Rocky, Project Hail Mary',
       };
     case 'ufo':
     default:

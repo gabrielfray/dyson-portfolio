@@ -109,13 +109,19 @@ const FILES: Record<string, string> = {
   tardis: 'tardis.mp3',
   voyager: 'voyager.mp3', // "Johnny B. Goode" — está no Golden Record da Voyager
   oumuamua: 'oumuamua.mp3',
+  hailmary: 'hailmary.mp3', // refrão da música (fornecido pelo usuário)
 };
 // volume por arquivo (0-1); cai no padrão se não listado
 const FILE_VOLUME: Record<string, number> = {
   voyager: 0.08, // música — bem baixinho
+  hailmary: 0.16,
 };
 const audioCache: Record<string, HTMLAudioElement> = {};
 let currentFile: HTMLAudioElement | null = null;
+let fadeTimer = 0;
+let onFileEnded: (() => void) | null = null;
+// aviso de fim da música (usado p/ encerrar animações atreladas, ex.: modo IR)
+export function setOnFileEnded(cb: (() => void) | null): void { onFileEnded = cb; }
 
 function playFile(key: string): void {
   const name = FILES[key];
@@ -124,21 +130,29 @@ function playFile(key: string): void {
   if (!a) {
     a = new Audio(import.meta.env.BASE_URL + 'sounds/' + name);
     a.preload = 'auto';
-    a.volume = FILE_VOLUME[key] ?? TARDIS_VOLUME;
     audioCache[key] = a;
   }
+  clearInterval(fadeTimer);
+  a.volume = FILE_VOLUME[key] ?? TARDIS_VOLUME;
   a.currentTime = 0;
+  a.onended = () => { if (currentFile === a) { currentFile = null; onFileEnded?.(); } };
   currentFile = a;
   void a.play().catch(() => { /* arquivo ausente ou sem gesto: ignora */ });
 }
 
+// Para com fade suave (não corta seco).
 function stopFile(): void {
-  if (!currentFile) return;
-  try {
-    currentFile.pause();
-    currentFile.currentTime = 0;
-  } catch { /* ignora */ }
+  const a = currentFile;
+  if (!a) return;
   currentFile = null;
+  a.onended = null;
+  clearInterval(fadeTimer);
+  const v0 = a.volume, t0 = performance.now();
+  fadeTimer = window.setInterval(() => {
+    const k = (performance.now() - t0) / 600;
+    if (k >= 1) { try { a.pause(); a.currentTime = 0; a.volume = v0; } catch { /* ignora */ } clearInterval(fadeTimer); }
+    else a.volume = v0 * (1 - k);
+  }, 30);
 }
 
 // Interrompe qualquer efeito tocando (chamado em todo clique, antes de tocar).
