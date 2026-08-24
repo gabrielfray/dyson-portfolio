@@ -205,7 +205,7 @@ export function getAnomaly(key: string, lang: Lang): AnomalyInfo {
         rows: [
           { label: T('DESIGNAÇÃO', 'DESIGNATION'), value: 'Tau Ceti e' },
           { label: T('ESTRELA', 'STAR'), value: 'Tau Ceti' },
-          { label: T('AMEAÇA', 'THREAT'), value: T('astrófago', 'astrophage') },
+          { label: T('AMEAÇA', 'THREAT'), value: T('astrofágico', 'astrophage') },
           { label: T('PREDADOR', 'PREDATOR'), value: 'Taumoeba' }, // nome próprio (Grace) — não traduz
           { label: 'STATUS', value: T('linha de Petrova estável', 'Petrova line stable') },
         ],

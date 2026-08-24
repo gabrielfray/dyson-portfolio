@@ -500,6 +500,7 @@ export const ContactPrimary = styled.a`
 export const ContactRow = styled.div`
   display: flex;
   gap: 12px;
+  @media (max-width: 560px) { gap: 8px; }
 `;
 
 export const ContactSecondary = styled.a`
@@ -509,8 +510,11 @@ export const ContactSecondary = styled.a`
   justify-content: center;
   gap: 8px;
   flex: 1;
+  min-width: 0;
   padding: 13px;
   font-size: 12px;
+  white-space: nowrap;
+  @media (max-width: 560px) { padding: 11px 6px; font-size: 11px; gap: 6px; }
 `;
 
 export const ContactMeta = styled.div<{ $i?: number }>`

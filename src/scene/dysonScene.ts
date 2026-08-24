@@ -62,7 +62,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // Conteúdo da cena (cada módulo se adiciona à scene e devolve seus handles).
   const stars = createStarfield(scene);
   createGalaxies(scene);
-  const sun = createSun(scene);
+  const sun = createSun(scene, isMobile);
   const { dyson, shell, rings } = createDysonStructure(scene);
   const { planets, planetPick } = createPlanets(scene);
   const { anomalies, update: updateAnomalies, trigger: triggerAnomaly } = createAnomalies(scene, camera);

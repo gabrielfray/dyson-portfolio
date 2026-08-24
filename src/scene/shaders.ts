@@ -89,6 +89,24 @@ export const GLOW_FRAG = `precision highp float;
     gl_FragColor = vec4(col*(1.05+0.55*fil)*pulse, min(a,1.0));
   }`;
 
+// Sol (MOBILE): glow radial liso, SEM ruído fbm. GPUs mobile rodam o noise
+// pesado do GLOW_FRAG em precisão instável e os filamentos "estouram" formando
+// um jato vertical que o bloom amplifica. Aqui é só um fresnel suave e clampado
+// (não pode estourar). Usa os mesmos varyings do GLOW_VERT. Desktop não usa isto.
+export const GLOW_FRAG_MOBILE = `precision highp float;
+  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime;
+  void main(){
+    float d = max(dot(normalize(vN), normalize(vV)), 0.0);
+    vec3 amber = vec3(1.0, 0.55, 0.14);
+    vec3 gold  = vec3(1.0, 0.74, 0.30);
+    vec3 core  = vec3(1.0, 0.93, 0.76);
+    vec3 col = mix(amber, gold, smoothstep(0.0, 0.6, d));
+    col = mix(col, core, pow(d, 4.0));
+    float pulse = 1.0 + 0.04*sin(uTime*1.1);
+    float a = pow(d, 2.6) * 1.0 * pulse;
+    gl_FragColor = vec4(clamp(col*pulse, 0.0, 1.6), clamp(a, 0.0, 1.0));
+  }`;
+
 // Planetas: iluminação a partir da origem (o sol) — hemisfério aceso + reflexo
 // especular — independente das luzes da cena, para não afetar a estrutura.
 export const PLANET_VERT = `

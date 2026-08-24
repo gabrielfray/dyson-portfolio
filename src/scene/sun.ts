@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLOW_FRAG, GLOW_VERT } from './shaders';
+import { GLOW_FRAG, GLOW_FRAG_MOBILE, GLOW_VERT } from './shaders';
 
 export const SUN_R = 6;
 
@@ -31,12 +31,15 @@ export interface SunState { exploding: boolean; et: number; flash: number; shake
 // Cria a estrela: núcleo de plasma (shader), disco brilhante, coronas/aura e as
 // luzes da cena. Também prepara a supernova (casca + onda de choque + detritos),
 // disparada por detonate(). O update anima pulso normal OU a explosão.
-export function createSun(scene: THREE.Scene): { update: (t: number, dt: number, ir?: number) => void; detonate: () => void; state: SunState } {
+export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: number, dt: number, ir?: number) => void; detonate: () => void; state: SunState } {
+  // No mobile, esfera menos subdividida + shader liso (sem fbm) p/ o plasma não
+  // estourar em GPUs de celular. Desktop segue com a versão procedural completa.
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(10, 64, 64),
+    new THREE.SphereGeometry(10, isMobile ? 32 : 64, isMobile ? 32 : 64),
     new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { uTime: { value: 0 } }, vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG,
+      uniforms: { uTime: { value: 0 } }, vertexShader: GLOW_VERT,
+      fragmentShader: isMobile ? GLOW_FRAG_MOBILE : GLOW_FRAG,
     }),
   );
   scene.add(glow);
