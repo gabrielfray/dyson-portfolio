@@ -525,16 +525,20 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     anomalies.push({ key: 'hailmary', body: g, pick });
 
     // ===== Linha de Petrova (4 camadas): espinha LUT + partículas + fitas =====
-    // 1) Espinha: curva Catmull-Rom da estrela (P0) ao planeta (P2), amostrada numa
-    // LUT com base perpendicular (A,B). A LUT é re-ondulada por quadro (2 fbm1) e
-    // ancorada nas pontas por pow(sin(u·π),0.9) -> serpenteia no meio, grudada nas pontas.
+    // 1) Espinha: arco LEVE e num só sentido, da estrela (P0) ao planeta (P2),
+    // amostrado numa LUT com base perpendicular (A,B). A LUT ainda respira com um
+    // fbm1 sutil (só um leve tremular), ancorado nas pontas por pow(sin(u·π),0.9)
+    // -> curva limpa, sem serpentear (referência: rastro de astrophage do filme).
     const P0 = starPos.clone(), P2 = new THREE.Vector3(0, 0, 0);
+    const chord = new THREE.Vector3().subVectors(P2, P0);
+    // direção perpendicular à corda (componente "para cima") -> arco que sobe suave
+    const bow = new THREE.Vector3(0, 1, 0).addScaledVector(chord, -chord.y / chord.lengthSq()).normalize();
+    const ARC = 128; // altura do arco (curva leve); amplitude com sino sin(u·π) -> pico no meio
     const spineCurve = new THREE.CatmullRomCurve3([
       P0.clone(),
-      P0.clone().lerp(P2, 0.22).add(new THREE.Vector3(-24, 70, 34)),
-      P0.clone().lerp(P2, 0.44).add(new THREE.Vector3(22, 116, -18)),
-      P0.clone().lerp(P2, 0.66).add(new THREE.Vector3(-14, 88, 46)),
-      P0.clone().lerp(P2, 0.85).add(new THREE.Vector3(12, 36, 12)),
+      P0.clone().lerp(P2, 0.25).addScaledVector(bow, ARC * Math.sin(0.25 * Math.PI)),
+      P0.clone().lerp(P2, 0.50).addScaledVector(bow, ARC),
+      P0.clone().lerp(P2, 0.75).addScaledVector(bow, ARC * Math.sin(0.75 * Math.PI)),
       P2.clone(),
     ]);
     const LUT_N = 320;
@@ -552,13 +556,13 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     const h1 = (x: number) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
     const vn1 = (x: number) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return h1(i) * (1 - u) + h1(i + 1) * u; };
     const fbm1 = (x: number) => { let s = 0, a = 0.5, fr = 1; for (let o = 0; o < 4; o++) { s += a * vn1(x * fr); fr *= 2; a *= 0.5; } return s; };
-    const AMP = 24; // amplitude da serpentina (era 55 -> ficava agitado demais)
+    const AMP = 7; // apenas um leve tremular (era 24 -> serpenteava e ficava torta)
     const rebuildLUT = (t: number) => {
       for (let i = 0; i < LUT_N; i++) {
         const u = i / (LUT_N - 1);
         const anchor = Math.pow(Math.sin(u * Math.PI), 0.9); // zero nas pontas -> gruda na estrela/planeta
-        const dA = (fbm1(u * 4 + t * 0.16) - 0.5) * 2 * AMP * anchor; // bem mais lento e ondas mais longas
-        const dB = (fbm1(u * 4 + 100 - t * 0.14) - 0.5) * 2 * AMP * anchor;
+        const dA = (fbm1(u * 1.6 + t * 0.16) - 0.5) * 2 * AMP * anchor; // ondas longas e sutis
+        const dB = (fbm1(u * 1.6 + 100 - t * 0.14) - 0.5) * 2 * AMP * anchor;
         lutPos[i].copy(lutBase[i]).addScaledVector(lutA[i], dA).addScaledVector(lutB[i], dB);
       }
     };

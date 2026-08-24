@@ -209,7 +209,7 @@ export function getAnomaly(key: string, lang: Lang): AnomalyInfo {
           { label: T('PREDADOR', 'PREDATOR'), value: 'Taumoeba' }, // nome próprio (Grace) — não traduz
           { label: 'STATUS', value: T('linha de Petrova estável', 'Petrova line stable') },
         ],
-        note: '"We save worlds, friend. We save everything." — Rocky, Project Hail Mary',
+        note: '"We save worlds, friend. We save everything." — Rocky',
       };
     case 'ufo':
     default:
