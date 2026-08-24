@@ -161,10 +161,10 @@ export default function App() {
 
       {!focused && <LangToggle label={content.langLabel} onClick={toggleLang} />}
 
-      {started && manual && (
+      {started && manual && !focused && (
         <S.ManualHint>
-          {pt ? 'CONTROLE MANUAL' : 'MANUAL CONTROL'}
-          <span>{pt ? 'arraste p/ girar · clique no núcleo p/ soltar' : 'drag to rotate · click core to release'}</span>
+          {pt ? 'CÂMERA LIVRE' : 'FREE CAMERA'}
+          <span>{pt ? 'arraste p/ girar · toque no núcleo p/ soltar' : 'drag to rotate · tap core to release'}</span>
         </S.ManualHint>
       )}
 

@@ -207,8 +207,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       moved = true;
       return;
     }
-    // toque de 1 dedo que se move -> passa a girar (tablets; no mobile é auto sempre)
-    if (!isMobile && !dragging && e.pointerType === 'touch' && pointers.size === 1 && lockedIdx < 0 &&
+    // toque de 1 dedo que se move -> passa a girar (câmera livre também no mobile)
+    if (!dragging && e.pointerType === 'touch' && pointers.size === 1 && lockedIdx < 0 &&
         Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6) {
       dragging = true;
       manual = true;
@@ -320,7 +320,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         const now = performance.now();
         coreClicks = now - lastCoreClick < 3000 ? coreClicks + 1 : 1;
         lastCoreClick = now;
-        if (!isMobile && coreClicks === 1) { // no mobile não há modo manual (rotação automática sempre)
+        if (coreClicks === 1) { // toque/clique no núcleo alterna a câmera livre (mobile incluso)
           manual = !manual;
           manualPhi = 0;
           renderer.domElement.style.cursor = manual ? 'grab' : '';
