@@ -68,8 +68,8 @@ export default function App() {
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
       onAnomalyClick: (key) => {
-        // trocar p/ outro egg encerra a Petrova; re-clicar o Adrian reinicia (não encerra)
-        if (key !== 'hailmary') sceneApiRef.current?.stopPetrova();
+        // trocar p/ outro egg encerra a Petrova (forçado); re-clicar o Adrian reinicia
+        if (key !== 'hailmary') sceneApiRef.current?.endPetrova();
         playAnomalySfx(key);
       },
       onManual: (m) => setManual(m),
@@ -134,8 +134,8 @@ export default function App() {
       sceneApiRef.current?.stopPetrova();
     };
     window.addEventListener('pointerdown', stop, true);
-    // fim da música do Hail Mary -> encerra o modo IR/véus com fade suave
-    setOnFileEnded(() => sceneApiRef.current?.stopPetrova());
+    // fim da música do Hail Mary -> encerra de fato o modo IR/véus (destrava + fade)
+    setOnFileEnded(() => sceneApiRef.current?.endPetrova());
     return () => { window.removeEventListener('pointerdown', stop, true); setOnFileEnded(null); };
   }, []);
 

@@ -152,9 +152,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
   let irStart = -1, irStopAt = -1; // modo infravermelho (véus / linha de Petrova)
+  let irLocked = false; // enquanto travado, cliques não encerram o evento — só a música ao acabar
   const ESPECTRO = { drainDepth: 0.85, fade: 2.4, maxHold: 90 }; // drainDepth = profundidade do vale (0.93 ~ preto total); fade = saída suave; maxHold = segurança
-  const startPetrova = () => { irStart = clock.getElapsedTime(); irStopAt = -1; };
-  const stopPetrova = () => { if (irStart >= 0 && irStopAt < 0) irStopAt = clock.getElapsedTime(); }; // fade suave
+  const startPetrova = () => { irStart = clock.getElapsedTime(); irStopAt = -1; irLocked = true; };
+  // stop "leve": ignorado enquanto travado (o evento do Adrian roda até o fim)
+  const stopPetrova = () => { if (irLocked) return; if (irStart >= 0 && irStopAt < 0) irStopAt = clock.getElapsedTime(); };
+  // stop "forçado": encerra de fato (fim da música ou troca p/ outro easter egg)
+  const endPetrova = () => { irLocked = false; if (irStart >= 0 && irStopAt < 0) irStopAt = clock.getElapsedTime(); };
   const smoothstep = (a: number, b: number, x: number) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
   // multi-touch: mapa de dedos ativos + estado da pinça (zoom)
   const pointers = new Map<number, { x: number; y: number }>();
@@ -418,8 +422,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       const down = irStopAt >= 0 ? smoothstep(irStopAt, irStopAt + ESPECTRO.fade, t) : 0; // saída suave
       drain = ESPECTRO.drainDepth * fall * (1 - rise * 0.82) * (1 - down);
       ir = up * (1 - down);
-      if (irStopAt >= 0 && t >= irStopAt + ESPECTRO.fade) { irStart = -1; irStopAt = -1; }
-      else if (irStopAt < 0 && e > ESPECTRO.maxHold) irStopAt = t; // segurança (música não terminou)
+      if (irStopAt >= 0 && t >= irStopAt + ESPECTRO.fade) { irStart = -1; irStopAt = -1; irLocked = false; }
+      else if (irStopAt < 0 && e > ESPECTRO.maxHold) { irStopAt = t; irLocked = false; } // segurança (música não terminou)
     }
     stars.update(t, ir);
     sun.update(t, dt, ir);
@@ -487,6 +491,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     setFocus(f: number) { targetFocus = f; },
     startIntro() { introActive = true; },
     stopPetrova() { stopPetrova(); },
+    endPetrova() { endPetrova(); },
     setLocked(i: number) {
       if (lockedIdx >= 0 && rings[lockedIdx]) {
         const m = ud(rings[lockedIdx]).mat;
