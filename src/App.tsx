@@ -13,6 +13,7 @@ import { Reticle } from './components/Reticle';
 import { PlanetCard } from './components/PlanetCard';
 import { AnomalyCard } from './components/AnomalyCard';
 import { IntroGate } from './components/IntroGate';
+import { SupernovaHint } from './components/SupernovaHint';
 import * as S from './App.styles';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
   const [hoverAnomaly, setHoverAnomaly] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState(false);
+  const [sunDead, setSunDead] = useState(false); // núcleo colapsou -> mostra a dica do enigma
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
@@ -75,10 +77,10 @@ export default function App() {
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
       // Enigma "Contatos Imediatos" (pós-supernova)
-      onSunDead: () => { window.setTimeout(() => playContactMotif(), 9000); }, // convite após o clipe da explosão
+      onSunDead: () => { setSunDead(true); window.setTimeout(() => playContactMotif(), 9000); }, // dica + convite
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),
-      onContactSolved: () => playContactSolved(),
+      onContactSolved: () => { setSunDead(false); playContactSolved(); }, // resolvido -> some a dica
 
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
@@ -172,6 +174,8 @@ export default function App() {
           <span>{pt ? 'arraste p/ girar · toque no núcleo p/ soltar' : 'drag to rotate · tap core to release'}</span>
         </S.ManualHint>
       )}
+
+      {started && sunDead && <SupernovaHint lang={lang} />}
 
       {/* HUD entra em cena só depois do "iniciar" */}
       {started && (

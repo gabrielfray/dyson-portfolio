@@ -150,7 +150,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // controle manual: clicar no núcleo trava a rotação automática e libera o arraste
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
-  let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
+  let coreClicks = 0, lastCoreClick = 0; // cliques seguidos no núcleo -> supernova
+  const CORE_CLICKS_TO_DETONATE = 5; // TESTE: reduzido de 100 p/ 5 (voltar p/ 100 em produção)
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
@@ -320,7 +321,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     if (lockedIdx < 0) {
       if (raycaster.intersectObject(corePick, false).length) { // clicou no núcleo
         // contador (invisível) de cliques seguidos; zera se parar por ~3s.
-        // 100 cliques em sequência detonam a estrela.
+        // N cliques em sequência detonam a estrela (ver CORE_CLICKS_TO_DETONATE).
         const now = performance.now();
         coreClicks = now - lastCoreClick < 3000 ? coreClicks + 1 : 1;
         lastCoreClick = now;
@@ -330,7 +331,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
           renderer.domElement.style.cursor = manual ? 'grab' : '';
           opts.onManual?.(manual);
         }
-        if (coreClicks >= 100 && !sun.state.exploding) { sun.detonate(); coreClicks = 0; opts.onDetonate?.(); }
+        if (coreClicks >= CORE_CLICKS_TO_DETONATE && !sun.state.exploding) { sun.detonate(); coreClicks = 0; opts.onDetonate?.(); }
         return;
       }
       // planeta -> revela o card (no toque não há hover)
