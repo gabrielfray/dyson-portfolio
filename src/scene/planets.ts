@@ -347,15 +347,16 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
 
 // Avança as órbitas (kepleriano) e a rotação própria; congela o planeta sob o
 // cursor (planetHover) para leitura estável do card.
-export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0, after = 0) {
+export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0, after = 0, plume = 0) {
   planets.forEach((p, i) => {
     for (const m of p.irMats) m.uniforms.uIr.value = ir; // tom infravermelho (Petrova)
     if (p.dead) { p.deadT += dt; animateBurst(p); return; } // destruído: só anima o burst
     if (blastT >= 0 && blastT >= p.destroyAt) { killPlanet(p); return; } // radiação chegou -> desintegra
-    // sobreviventes no pós-supernova: autoluminosos, anéis somem, cauda cometária
+    // sobreviventes: corpo autoluminoso (after, fica quente) + anéis somem +
+    // PLUMA de ablação (plume) forte no blast que depois some aos poucos
     (p.body.material as THREE.ShaderMaterial).uniforms.uAfter.value = after;
     if (p.ring) p.ring.visible = after < 0.5; // anéis de gelo sublimam
-    if (p.tail) { p.tail.visible = after > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = after * 0.28; }
+    if (p.tail) { p.tail.visible = plume > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = plume * 0.55; }
     if (i !== planetHover) p.angle += p.omega * dt;
     p.pivot.rotation.y = p.angle;
     p.body.rotation.y += p.spin * dt;

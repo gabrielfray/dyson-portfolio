@@ -50,8 +50,7 @@ const script = (lang: Lang): [string, string][] =>
         ['> casca de Dyson ............ PERDIDA', 'warn'],
         ['> portfólio ................. OFFLINE', 'warn'],
         ['> sobreviventes: Júpiter · Saturno · Urano · Netuno', 'info'],
-        ['> sinal detectado no espaço profundo', 'hint'],
-        ['> reproduza-o (5 tons) p/ reacender o núcleo', 'hint'],
+        ['> remanescente: gigante azul', 'hint'],
       ]
     : [
         ['> FATAL ERROR · core collapsed', 'err'],
@@ -60,8 +59,7 @@ const script = (lang: Lang): [string, string][] =>
         ['> Dyson shell .............. LOST', 'warn'],
         ['> portfolio ................ OFFLINE', 'warn'],
         ['> survivors: Jupiter · Saturn · Uranus · Neptune', 'info'],
-        ['> signal detected in deep space', 'hint'],
-        ['> replay it (5 tones) to reignite the core', 'hint'],
+        ['> remnant: blue giant', 'hint'],
       ];
 
 export function ResetTerminal({ lang, onReset }: { lang: Lang; onReset: () => void }) {

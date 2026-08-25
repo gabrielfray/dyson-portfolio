@@ -14,6 +14,8 @@ import { PlanetCard } from './components/PlanetCard';
 import { AnomalyCard } from './components/AnomalyCard';
 import { IntroGate } from './components/IntroGate';
 import { ResetTerminal } from './components/ResetTerminal';
+import { SupernovaHint } from './components/SupernovaHint';
+import { SupernovaCard } from './components/SupernovaCard';
 import * as S from './App.styles';
 
 export default function App() {
@@ -22,9 +24,11 @@ export default function App() {
   const [sel, setSel] = useState<number | null>(null);
   const [hoverPlanet, setHoverPlanet] = useState<number | null>(null);
   const [hoverAnomaly, setHoverAnomaly] = useState<string | null>(null);
+  const [hoverSun, setHoverSun] = useState(false); // gigante azul (supernova) sob o cursor
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState(false);
-  const [sunDead, setSunDead] = useState(false); // núcleo colapsou (supernova) -> rescaldo
+  const [mission, setMission] = useState(false);   // 1ª explosão do sol -> missão secreta (puzzle); portfólio FICA
+  const [collapsed, setCollapsed] = useState(false); // supernova (pós-puzzle) -> portfólio some + terminal de reset
   const [simKey, setSimKey] = useState(0); // remontar a cena p/ "reiniciar simulação"
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -32,17 +36,17 @@ export default function App() {
   const planetOverlayRef = useRef<HTMLDivElement | null>(null);
   const planetCardRef = useRef<HTMLDivElement | null>(null);
   const selRef = useRef<number | null>(null);
-  const sunDeadRef = useRef(false);
+  const collapsedRef = useRef(false);
   useEffect(() => {
     selRef.current = sel;
   }, [sel]);
-  useEffect(() => { sunDeadRef.current = sunDead; }, [sunDead]);
+  useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
 
   // reinicia a simulação: remonta a cena (estado inicial) e limpa o HUD
   const resetSim = useCallback(() => {
     stopAllSfx();
     setSel(null); setHoverPlanet(null); setHoverAnomaly(null); setHoverRing(null);
-    setManual(false); setSunDead(false);
+    setManual(false); setMission(false); setCollapsed(false); setHoverSun(false);
     setSimKey((k) => k + 1);
   }, []);
 
@@ -77,7 +81,7 @@ export default function App() {
       bloom: 1.0,
       sections: SECTIONS,
       onHover: (s) => setHoverRing(selRef.current == null ? s : null),
-      onSelect: (_s, idx) => { if (sunDeadRef.current) return; select(idx); }, // sem navegação no rescaldo
+      onSelect: (_s, idx) => { if (collapsedRef.current) return; select(idx); }, // sem navegação após a supernova
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
       onAnomalyClick: (key) => {
@@ -87,8 +91,10 @@ export default function App() {
       },
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
-      onSunDead: () => { setSunDead(true); window.setTimeout(() => playContactMotif(), 9000); }, // rescaldo + convite (dica do enigma) após o áudio da explosão
-      onReborn: () => playSupernovaBirth(),          // gigante azul se forma -> som do renascimento
+      onSunDead: () => { setMission(true); window.setTimeout(() => playContactMotif(), 9000); }, // 1ª explosão -> missão secreta + convite (dica), portfólio FICA
+      onSupernova: () => { setMission(false); playSupernovaBirth(); }, // enigma resolvido -> some a dica (não atrapalha a animação) + som da supernova
+      onReborn: () => setCollapsed(true),      // gigante azul formada -> portfólio some + terminal
+      onSunHover: (over) => setHoverSun(over), // card da gigante azul
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),
 
@@ -176,20 +182,23 @@ export default function App() {
       <GlobalStyle />
       <S.CanvasMount ref={canvasRef} $shift={canvasShift} />
 
-      {!focused && !sunDead && <LangToggle label={content.langLabel} onClick={toggleLang} />}
+      {!focused && !collapsed && <LangToggle label={content.langLabel} onClick={toggleLang} />}
 
-      {started && manual && !focused && !sunDead && (
+      {started && manual && !focused && !collapsed && (
         <S.ManualHint>
           {pt ? 'CÂMERA LIVRE' : 'FREE CAMERA'}
           <span>{pt ? 'arraste p/ girar · toque no núcleo p/ soltar' : 'drag to rotate · tap core to release'}</span>
         </S.ManualHint>
       )}
 
-      {/* rescaldo da supernova: portfólio some, aparece o terminal de reset */}
-      {started && sunDead && <ResetTerminal lang={lang} onReset={resetSim} />}
+      {/* 1ª explosão: missão secreta ativa (puzzle) — portfólio continua normal */}
+      {started && mission && !collapsed && <SupernovaHint lang={lang} />}
 
-      {/* HUD do portfólio: some no rescaldo (sunDead) até reiniciar a simulação */}
-      {started && !sunDead && (
+      {/* supernova (pós-puzzle): portfólio some, aparece o terminal de reset */}
+      {started && collapsed && <ResetTerminal lang={lang} onReset={resetSim} />}
+
+      {/* HUD do portfólio: fica na 1ª explosão/missão; só some após a supernova */}
+      {started && !collapsed && (
         <>
           <Console lines={termLines} />
 
@@ -205,17 +214,19 @@ export default function App() {
         </>
       )}
 
-      {focused && selId && !sunDead && (
+      {focused && selId && !collapsed && (
         <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
       )}
 
-      {(hoverPlanet !== null || hoverAnomaly !== null) && (
+      {(hoverPlanet !== null || hoverAnomaly !== null || hoverSun) && (
         <S.PlanetOverlay ref={planetOverlayRef}>
           <Reticle />
-          {hoverAnomaly !== null ? (
+          {hoverSun ? (
+            <SupernovaCard key={'supernova-' + lang} lang={lang} innerRef={planetCardRef} />
+          ) : hoverAnomaly !== null ? (
             <AnomalyCard key={hoverAnomaly + '-' + lang} anomKey={hoverAnomaly} lang={lang} innerRef={planetCardRef} />
           ) : (
-            <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang + (sunDead ? '-x' : '')} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} after={sunDead} />
+            <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang + (collapsed ? '-x' : '')} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} after={collapsed} />
           )}
         </S.PlanetOverlay>
       )}

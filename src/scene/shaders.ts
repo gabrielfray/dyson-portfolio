@@ -144,12 +144,12 @@ export const PLANET_FRAG = `
     vec3 col = albedo * (uAmbient + diff) + vec3(spec);
     // sob a luz de Petrova o sistema fica avermelhado (mantém o relevo/sombreado)
     col = mix(col, col * vec3(1.5, 0.32, 0.26) + vec3(0.03, 0.0, 0.0), uIr);
-    // pós-supernova: sobrevivente incandescente, gradiente CONTÍNUO (sem estourar):
-    // vermelho-escuro no lado noturno -> laranja -> ponto sub-estelar branco-azul
-    float heat = pow(diff, 0.7);
-    vec3 hot = mix(vec3(0.42, 0.05, 0.02), vec3(1.0, 0.5, 0.22), heat); // brasa -> laranja
-    hot = mix(hot, vec3(0.82, 0.90, 1.0), pow(diff, 5.0) * 0.55);       // ponto mais quente azula
-    vec3 afterCol = albedo * 0.12 + hot * (0.45 + 0.85 * heat);
+    // pós-supernova: sobrevivente autoluminoso com TERMINADOR claro — face estelar
+    // branco-azulada (é uma gigante azul), esfriando p/ laranja e vermelho-escuro
+    // no lado noturno. Gradiente contínuo (não estoura).
+    vec3 snNight = vec3(0.26, 0.03, 0.02);                                   // noite vermelho-escuro
+    vec3 snDay = mix(vec3(1.0, 0.5, 0.2), vec3(0.78, 0.88, 1.0), smoothstep(0.35, 1.0, diff)); // laranja -> azul-branco
+    vec3 afterCol = mix(snNight, snDay, smoothstep(0.0, 0.42, diff)) * (0.4 + 1.05 * pow(diff, 0.5));
     col = mix(col, afterCol, uAfter);
     gl_FragColor = vec4(col, 1.0);
   }`;

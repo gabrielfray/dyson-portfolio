@@ -8,8 +8,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import type { DysonSceneApi, DysonSceneOptions } from './types';
 import { createStarfield } from './starfield';
 import { createGalaxies } from './galaxies';
-import { createSun, SN_BLAST_AT } from './sun';
-import { createDysonStructure, ud } from './rings';
+import { createSun, SN_BLAST_AT, SN_REVIVE_BLAST } from './sun';
+import { createDysonStructure, ud, SHELL_R } from './rings';
 import { createPlanets, updatePlanets } from './planets';
 import { createAnomalies } from './anomalies';
 
@@ -70,6 +70,21 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const mm = (n as THREE.Mesh).material;
     if (mm) (Array.isArray(mm) ? mm : [mm]).forEach((m) => { m.transparent = true; dysonMats.push(m); });
   }));
+  // Estilhaços da casca de Dyson: pedaços que voam pra fora e vaporizam no blast
+  // da supernova. InstancedMesh de tetraedros aditivos.
+  const FRAG_N = 360;
+  const frags = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }), FRAG_N);
+  frags.frustumCulled = false; frags.visible = false; scene.add(frags);
+  const fragMat = frags.material as THREE.MeshBasicMaterial;
+  const fragDir: THREE.Vector3[] = [], fragSpd: number[] = [], fragAx: THREE.Vector3[] = [], fragSz: number[] = [];
+  for (let i = 0; i < FRAG_N; i++) {
+    fragDir.push(new THREE.Vector3().randomDirection());
+    fragSpd.push(45 + Math.random() * 100);
+    fragAx.push(new THREE.Vector3().randomDirection());
+    fragSz.push(SHELL_R * (0.02 + Math.random() * 0.05));
+  }
+  const _fm = new THREE.Matrix4(), _fq = new THREE.Quaternion(), _fp = new THREE.Vector3(), _fsc = new THREE.Vector3();
+
   const { planets, planetPick } = createPlanets(scene);
   const { anomalies, update: updateAnomalies, trigger: triggerAnomaly } = createAnomalies(scene, camera);
   const anomalyPick = anomalies.map((a) => a.pick);
@@ -153,16 +168,18 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let hovered = -1, swoop = 0, lockedIdx = -1, focus = 0, targetFocus = 0;
   let planetHover = -1;
   let anomalyHover = -1;
+  let sunHover = false; // gigante azul (supernova) sob o cursor -> card
   // controle manual: clicar no núcleo trava a rotação automática e libera o arraste
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // cliques seguidos no núcleo -> supernova
-  const CORE_CLICKS_TO_DETONATE = 5; // TESTE: reduzido de 100 p/ 5 (voltar p/ 100 em produção)
-  const TEST_SKIP_PUZZLE = false; // o enigma dos 5 tons é que ativa a supernova (revive)
+  const CORE_CLICKS_TO_DETONATE = 100; // cliques no núcleo p/ detonar a 1ª explosão
+  const TEST_SKIP_PUZZLE = false; // false = enigma real (sequência das 5 anomalias); true só p/ teste
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
   let contactProgress = 0, sunDeadFired = false, rebornFired = false;
+  let plumeT = 0; // timer da pluma de ablação após a supernova (decai)
   let irStart = -1, irStopAt = -1; // modo infravermelho (véus / linha de Petrova)
   let irLocked = false; // enquanto travado, cliques não encerram o evento — só a música ao acabar
   const ESPECTRO = { drainDepth: 0.85, fade: 2.4, maxHold: 90 }; // drainDepth = profundidade do vale (0.93 ~ preto total); fade = saída suave; maxHold = segurança
@@ -240,6 +257,14 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     pointer.x = (e.clientX / innerWidth) * 2 - 1;
     pointer.y = -(e.clientY / innerHeight) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
+    // gigante azul (supernova renascida): card ao passar por cima, como os planetas
+    if (sun.state.reborn && raycaster.intersectObject(corePick, false).length) {
+      if (!sunHover) { sunHover = true; opts.onSunHover?.(true); }
+      clearPlanetHover(); clearAnomalyHover(); setHover(-1);
+      renderer.domElement.style.cursor = 'pointer';
+      return;
+    }
+    if (sunHover) { sunHover = false; opts.onSunHover?.(false); }
     // planetas e anomalias (exploração) — só quando nenhuma seção está aberta
     if (lockedIdx < 0) {
       const ph = planetPick.length ? raycaster.intersectObjects(planetPick, false) : [];
@@ -359,14 +384,14 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         // enigma dos 5 tons: só com o sol morto (antes de renascer). Cada egg toca
         // seu tom; reproduza o sinal do filme (voyager→oumuamua→monolith→ufo→hailmary).
         if (sun.state.dead && !sun.state.reviving && !sun.state.reborn) {
-          if (TEST_SKIP_PUZZLE) { contactProgress = 0; sun.revive(); opts.onContactSolved?.(); return; } // atalho de teste
+          if (TEST_SKIP_PUZZLE) { contactProgress = 0; sun.revive(); opts.onSupernova?.(); return; } // atalho de teste
           const toneIdx = CONTACT_MAP[key];
           if (toneIdx === undefined) { opts.onContactWrong?.(); contactProgress = 0; } // decoy -> reinicia
           else {
             opts.onContactTone?.(toneIdx);
             if (toneIdx === contactProgress) {
               contactProgress++;
-              if (contactProgress >= 5) { contactProgress = 0; sun.revive(); opts.onContactSolved?.(); }
+              if (contactProgress >= 5) { contactProgress = 0; sun.revive(); opts.onSupernova?.(); }
             } else contactProgress = toneIdx === 0 ? 1 : 0; // fora de ordem -> recomeça (0 já reinicia a frase)
           }
           return; // durante o enigma o clique não abre card nem toca o som normal do egg
@@ -462,23 +487,50 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
-    // casca de Dyson vaporiza ~0,83s após o blast (radiação a 1 UA) — some sob o clarão
-    const vap = sun.state.exploding ? smoothstep(SN_BLAST_AT + 0.83, SN_BLAST_AT + 1.7, sun.state.et) : 0;
+    // casca de Dyson INTEIRA durante a 1ª explosão e a carga; ela SE DESPEDAÇA no
+    // BLAST da supernova (rt >= SN_REVIVE_BLAST): fade rápido + estilhaços voando.
+    const shT = sun.state.reviving && sun.state.rt >= SN_REVIVE_BLAST ? sun.state.rt - SN_REVIVE_BLAST : (sun.state.reborn ? 99 : -1);
+    const vap = sun.state.reborn ? 1 : (shT >= 0 ? smoothstep(0, 0.4, shT) : 0);
     if (vap > 0) {
       for (const m of dysonMats) m.opacity = 1 - vap;
       const on = vap < 0.995; dyson.visible = on; shell.visible = on; rings.forEach((r) => { r.visible = on; });
     }
-    // pós-supernova: destruição por radiação + sobreviventes marcados (autoluminosos)
-    const after = (sun.state.dead || sun.state.reborn) ? smoothstep(SN_BLAST_AT + 2, SN_BLAST_AT + 6, sun.state.et) : 0;
+    // estilhaços: voam pra fora, tombam e vaporizam (encolhem/somem) em ~3,4s
+    if (shT >= 0 && shT < 3.4) {
+      frags.visible = true;
+      fragMat.opacity = smoothstep(0, 0.1, shT) * (1 - smoothstep(1.8, 3.4, shT)) * 0.95;
+      const cool = Math.min(shT / 2, 1);
+      fragMat.color.setRGB(1, 0.85 - 0.45 * cool, 0.6 - 0.45 * cool); // branco-quente -> laranja
+      const vanish = smoothstep(0.9, 3.3, shT); // vaporiza (encolhe)
+      for (let i = 0; i < FRAG_N; i++) {
+        const d = fragDir[i], rr = SHELL_R + fragSpd[i] * shT;
+        _fp.set(d.x * rr, d.y * rr, d.z * rr);
+        _fq.setFromAxisAngle(fragAx[i], shT * (1.5 + (i % 3)));
+        const s = fragSz[i] * (1 - vanish);
+        _fsc.set(s, s, s);
+        _fm.compose(_fp, _fq, _fsc);
+        frags.setMatrixAt(i, _fm);
+      }
+      frags.instanceMatrix.needsUpdate = true;
+    } else if (frags.visible) frags.visible = false;
+    // sobreviventes: corpo autoluminoso (fica quente) + PLUMA de ablação forte no
+    // blast que depois some aos poucos (só a pluma; os planetas continuam quentes)
+    const after = sun.state.reborn ? 1 : (shT >= 0 ? smoothstep(0.8, 2.2, shT) : 0);
+    let plume = 0;
+    if (sun.state.reviving) plume = shT >= 0 ? smoothstep(0, 0.5, shT) : 0;
+    else if (sun.state.reborn) { plumeT += dt; plume = Math.max(0.14, Math.exp(-plumeT / 7)); } // pluma decai p/ um resíduo (some quase toda; corpo segue quente)
     const blastT = sun.state.exploding && sun.state.et > SN_BLAST_AT ? sun.state.et - SN_BLAST_AT : -1;
-    updatePlanets(planets, dt, planetHover, blastT, ir, after);
+    updatePlanets(planets, dt, planetHover, blastT, ir, after, plume);
     updateAnomalies(t, userZoom, ir);
     updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)
     updateAstro(t, ir); // brilho de fundo (só no IR)
     galaxies.update(ir); // galáxias avermelhadas no modo IR
-    // rastreia na tela o objeto sob o cursor (planeta OU anomalia)
+    // rastreia na tela o objeto sob o cursor (planeta, anomalia OU a gigante azul)
     const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
-    if (tracked && opts.onPlanetTrack) {
+    if (sunHover && opts.onPlanetTrack) {
+      projV.set(0, 0, 0).project(camera); // a estrela fica na origem
+      opts.onPlanetTrack((projV.x * 0.5 + 0.5) * innerWidth, (-projV.y * 0.5 + 0.5) * innerHeight);
+    } else if (tracked && opts.onPlanetTrack) {
       tracked.getWorldPosition(projV);
       projV.project(camera);
       opts.onPlanetTrack((projV.x * 0.5 + 0.5) * innerWidth, (-projV.y * 0.5 + 0.5) * innerHeight);

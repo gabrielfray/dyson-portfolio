@@ -73,3 +73,15 @@ export const RowSub = styled.div`
   color: rgba(238, 232, 218, 0.5);
   margin-top: 2px;
 `;
+
+// Citação/nota no rodapé (pós-supernova) — mesmo estilo das notas das anomalias.
+export const Note = styled.div`
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 202, 112, 0.14);
+  font-size: 12px;
+  line-height: 1.6;
+  font-style: italic;
+  color: rgba(238, 232, 218, 0.6);
+  text-wrap: pretty;
+`;

@@ -38,12 +38,23 @@ export function buildAfterRows(planet: PlanetInfo, lang: Lang): CardRow[] {
   const L = planetLabels(lang);
   const nf = (n: number) => n.toLocaleString(pt ? 'pt-BR' : 'en-US', { maximumFractionDigits: 0 });
   const rows: CardRow[] = [
-    { label: pt ? 'TEMP. DIA' : 'DAY TEMP', value: `${nf(AFTER_T[planet.key])} K`, sub: pt ? 'mais quente que a superfície do Sol' : "hotter than the Sun's surface" },
+    { label: pt ? 'TEMP. DIA' : 'DAY TEMP', value: `${nf(AFTER_T[planet.key])} K` },
     { label: pt ? 'ATMOSFERA' : 'ATMOSPHERE', value: pt ? 'fervendo · arrancada' : 'boiling · stripped' },
-    { label: pt ? 'CAUDA' : 'TAIL', value: pt ? 'cometária · anti-estelar' : 'cometary · anti-stellar' },
+    { label: pt ? 'CAUDA' : 'TAIL', value: pt ? 'pluma maior que o planeta' : 'plume larger than planet' },
     { label: pt ? 'BRILHO' : 'GLOW', value: pt ? 'autoluminoso' : 'self-luminous' },
   ];
   if (planet.key === 'saturno') rows.push({ label: pt ? 'ANÉIS' : 'RINGS', value: pt ? 'sublimados' : 'sublimated' });
   rows.push({ label: L.status, value: pt ? 'SOBREVIVENTE' : 'SURVIVOR' });
   return rows;
+}
+
+// Citação (rodapé) do card pós-supernova: força a comparação — Nº de vezes a
+// superfície do Sol (~5772 K) E a distância, que é metade do impacto.
+export function afterNote(planet: PlanetInfo, lang: Lang): string {
+  const pt = lang === 'pt';
+  const ratio = Math.round(AFTER_T[planet.key] / 5772);
+  const au = planet.au.toLocaleString(pt ? 'pt-BR' : 'en-US', { maximumFractionDigits: 1 });
+  return pt
+    ? `${ratio}× a superfície do Sol — e isso a ${au} UA de distância.`
+    : `${ratio}× the Sun's surface — and that at ${au} AU away.`;
 }

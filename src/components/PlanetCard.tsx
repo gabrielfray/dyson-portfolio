@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { planetLabels, type Lang, type PlanetInfo } from '../data/content';
-import { buildPlanetRows, buildAfterRows, isSurvivorMarked } from './buildPlanetRows';
+import { buildPlanetRows, buildAfterRows, afterNote, isSurvivorMarked } from './buildPlanetRows';
 import { Caret } from './Caret';
 import * as S from './PlanetCard.styles';
 
@@ -79,6 +79,7 @@ export function PlanetCard({ planet, lang, innerRef, after = false }: { planet: 
           </S.Row>
         );
       })}
+      {marked && caret === 'done' && <S.Note>{afterNote(planet, lang)}</S.Note>}
     </S.Card>
   );
 }
