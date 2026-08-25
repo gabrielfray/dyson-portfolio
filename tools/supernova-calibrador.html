@@ -62,10 +62,10 @@
     </div>
   </div>
   <div class="linha" style="margin-top:12px">
-    <div class="ctrl"><label>DURAÇÃO · <span class="val" id="vdur">25</span>s</label><input type="range" id="dur" min="10" max="60" value="25"></div>
+    <div class="ctrl"><label>DURAÇÃO · <span class="val" id="vdur">10</span>s</label><input type="range" id="dur" min="10" max="60" value="10"></div>
     <div class="ctrl"><label>RAYLEIGH-TAYLOR · <span class="val" id="vamp">0.90</span></label><input type="range" id="amp" min="0" max="150" value="90"></div>
     <div class="ctrl"><label>EXPANSÃO · <span class="val" id="vexp">4.5</span></label><input type="range" id="exp" min="20" max="90" value="45"></div>
-    <div class="ctrl"><label>BLOOM · <span class="val" id="vbloom">1.1</span></label><input type="range" id="bloom" min="0" max="30" value="11"></div>
+    <div class="ctrl"><label>BLOOM · <span class="val" id="vbloom">0.6</span></label><input type="range" id="bloom" min="0" max="30" value="6"></div>
   </div>
 </div>
 
@@ -128,7 +128,7 @@ const neu=new THREE.Mesh(new THREE.SphereGeometry(1,32,24),neuMat); sys.add(neu)
 
 // 4) ejeta com instabilidades de Rayleigh-Taylor (icosaedro deslocado por fbm)
 const ejMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
-  uniforms:{uTime:{value:0},uAmp:{value:0.9},uScale:{value:1},uTemp:{value:40000},uOpacity:{value:0}},
+  uniforms:{uTime:{value:0},uAmp:{value:0.9},uScale:{value:1},uTemp:{value:40000},uBlue:{value:0},uOpacity:{value:0}},
   vertexShader:`${NOISE}
     uniform float uTime; uniform float uAmp; uniform float uScale;
     varying float vN2; varying vec3 vNorm; varying vec3 vView;
@@ -139,9 +139,10 @@ const ejMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending
       vec4 mv=modelViewMatrix*vec4(pos,1.0); vNorm=normalize(normalMatrix*dir); vView=normalize(-mv.xyz);
       gl_Position=projectionMatrix*mv; }`,
   fragmentShader:`${BLACKBODY}
-    uniform float uTemp; uniform float uOpacity;
+    uniform float uTemp; uniform float uOpacity; uniform float uBlue;
     varying float vN2; varying vec3 vNorm; varying vec3 vView;
     void main(){ vec3 col=blackbody(uTemp);
+      col=mix(col, vec3(0.30,0.55,1.0), uBlue);  // final azul (supergigante azul)
       float rim=pow(1.0-max(dot(vNorm,vView),0.0),1.4);
       float knot=0.35+0.9*vN2;                 // nós/filamentos mais brilhantes
       gl_FragColor=vec4(col*knot*(0.5+0.9*rim), uOpacity*(0.35+0.65*vN2)); }`});
@@ -165,23 +166,24 @@ ptsGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(PN*3),
 ptsGeo.setAttribute('aDir',new THREE.BufferAttribute(dir,3));
 ptsGeo.setAttribute('aSpeed',new THREE.BufferAttribute(spd,1));
 const ptsMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-  uniforms:{uExpand:{value:0},uTemp:{value:40000},uOpacity:{value:0}},
+  uniforms:{uExpand:{value:0},uTemp:{value:40000},uBlue:{value:0},uOpacity:{value:0}},
   vertexShader:`attribute vec3 aDir; attribute float aSpeed; uniform float uExpand;
     varying float vS; void main(){ vS=aSpeed; vec3 p=aDir*(0.15+aSpeed*uExpand);
     vec4 mv=modelViewMatrix*vec4(p,1.0); gl_PointSize=(1.5+aSpeed*2.5)*(300.0/-mv.z); gl_Position=projectionMatrix*mv; }`,
   fragmentShader:`${BLACKBODY}
-    uniform float uTemp; uniform float uOpacity; varying float vS;
+    uniform float uTemp; uniform float uOpacity; uniform float uBlue; varying float vS;
     void main(){ vec2 d=gl_PointCoord-0.5; float r=length(d); if(r>0.5) discard;
       float a=smoothstep(0.5,0.0,r); vec3 col=blackbody(uTemp*(0.7+0.5*vS));
+      col=mix(col, vec3(0.30,0.55,1.0), uBlue);
       gl_FragColor=vec4(col, a*uOpacity*(0.4+0.6*vS)); }`});
 const pts=new THREE.Points(ptsGeo,ptsMat); pts.frustumCulled=false; pts.visible=false; sys.add(pts);
 
 // 6) frente de choque: casca fina brilhante, expande mais rápido que a ejeta
 const shockMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.BackSide,
-  uniforms:{uOpacity:{value:0},uTemp:{value:40000}},
+  uniforms:{uOpacity:{value:0},uTemp:{value:40000},uBlue:{value:0}},
   vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
-  fragmentShader:`${BLACKBODY} varying vec3 vN; varying vec3 vV; uniform float uOpacity; uniform float uTemp;
-    void main(){ float f=pow(1.0-max(dot(vN,vV),0.0),3.5); gl_FragColor=vec4(blackbody(uTemp)*1.4, f*uOpacity); }`});
+  fragmentShader:`${BLACKBODY} varying vec3 vN; varying vec3 vV; uniform float uOpacity; uniform float uTemp; uniform float uBlue;
+    void main(){ float f=pow(1.0-max(dot(vN,vV),0.0),3.5); vec3 col=mix(blackbody(uTemp), vec3(0.30,0.55,1.0), uBlue); gl_FragColor=vec4(col*1.4, f*uOpacity); }`});
 const shock=new THREE.Mesh(new THREE.SphereGeometry(1,48,32),shockMat); shock.visible=false; sys.add(shock);
 
 // 7) eco de luz: anel iluminando poeira preexistente (projeção "superluminal")
@@ -203,7 +205,7 @@ const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.1,0.
 composer.addPass(bloom);
 
 // ---- estado / timeline ----
-const S={p:0,playing:false,dur:25,amp:0.9,exp:4.5,bloom:1.1};
+const S={p:0,playing:false,dur:10,amp:0.9,exp:4.5,bloom:0.6};
 const flashEl=document.getElementById('flash');
 const el=id=>document.getElementById(id);
 
@@ -216,7 +218,8 @@ function update(p){
   // tempo simulado: log de +0.25 s a +30 dias (comprime 7 ordens de magnitude)
   const simT=0.25*Math.pow(2.592e6/0.25,p);
   const bt=clamp((p-0.10)/0.9,0,1);
-  const uTemp=Math.exp(lerp(Math.log(40000),Math.log(3200),bt)); // esfria ao expandir (T∝1/r aprox.)
+  const uTemp=Math.exp(lerp(Math.log(40000),Math.log(16000),bt)); // fica no azul (não esfria p/ laranja)
+  const blue=smooth(0.35,1.0,p)*0.55; // empurra p/ azul saturado no fim (supergigante azul)
 
   // 1) pré-colapso: encolhe (531× na vida real) e escurece; some no breakout
   const col=smooth(0,0.05,p);
@@ -241,18 +244,21 @@ function update(p){
   ejMat.uniforms.uAmp.value=lerp(0.12,S.amp,ej);      // dedos crescem
   ejMat.uniforms.uTime.value=0.6+ej*3.5;
   ejMat.uniforms.uTemp.value=uTemp;
+  ejMat.uniforms.uBlue.value=blue;
   ejMat.uniforms.uOpacity.value=0.95*smooth(0.082,0.14,p)*(1-0.55*smooth(0.55,1.0,p));
 
   // 5) partículas de ejeta
   pts.visible=p>0.082;
   ptsMat.uniforms.uExpand.value=lerp(0.15,S.exp*1.4,ej);
   ptsMat.uniforms.uTemp.value=uTemp;
+  ptsMat.uniforms.uBlue.value=blue;
   ptsMat.uniforms.uOpacity.value=smooth(0.082,0.16,p)*(1-0.7*smooth(0.6,1.0,p));
 
   // 6) frente de choque (à frente, mais rápida)
   shock.visible=p>0.082&&p<0.95;
   shock.scale.setScalar(scale*1.2);
   shockMat.uniforms.uTemp.value=uTemp;
+  shockMat.uniforms.uBlue.value=blue;
   shockMat.uniforms.uOpacity.value=0.6*smooth(0.082,0.14,p)*(1-smooth(0.5,0.92,p));
 
   // 7) eco de luz (aparece na fase tardia)
