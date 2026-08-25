@@ -205,7 +205,7 @@ const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.1,0.
 composer.addPass(bloom);
 
 // ---- estado / timeline ----
-const S={p:0,playing:false,dur:10,amp:0.9,exp:4.5,bloom:0.6};
+const S={p:0,playing:false,dur:10,amp:0.9,exp:4.5,bloom:0.6,zoom:0};
 const flashEl=document.getElementById('flash');
 const el=id=>document.getElementById(id);
 
@@ -218,15 +218,17 @@ function update(p){
   // tempo simulado: log de +0.25 s a +30 dias (comprime 7 ordens de magnitude)
   const simT=0.25*Math.pow(2.592e6/0.25,p);
   const bt=clamp((p-0.10)/0.9,0,1);
-  const uTemp=Math.exp(lerp(Math.log(40000),Math.log(16000),bt)); // fica no azul (não esfria p/ laranja)
-  const blue=smooth(0.35,1.0,p)*0.55; // empurra p/ azul saturado no fim (supergigante azul)
+  const uTemp=Math.exp(lerp(Math.log(40000),Math.log(4000),bt)); // ejeta esfria e avermelha (azul->branco->laranja)
+  const blue=0.0; // ejeta segue o corpo negro (avermelha); o azul vem do NÚCLEO exposto = contraste térmico
 
   // 1) pré-colapso: encolhe (531× na vida real) e escurece; some no breakout
-  const col=smooth(0,0.05,p);
-  core.scale.setScalar(lerp(1.0,0.1,col));
-  coreMat.color.setScalar(lerp(1.0,0.25,col));
-  coreMat.opacity=1-smooth(0.05,0.10,p);
-  core.visible=p<0.11;
+  const collapse=smooth(0,0.05,p);
+  const reborn=smooth(0.12,0.85,p);  // reacende e cresce como gigante azul (compacta e brilhante)
+  const bluec=smooth(0.10,0.45,p);   // branco -> azul-branco pálido
+  core.visible=true;
+  core.scale.setScalar(Math.max(lerp(1.0,0.06,collapse)*(1-smooth(0.05,0.11,p)), lerp(0.10,1.25,reborn)));
+  coreMat.color.setRGB(lerp(1.0,0.62,bluec), lerp(1.0,0.78,bluec), 1.0); // #9EC7FF azul-branco pálido (não LED)
+  coreMat.opacity=Math.max(1-smooth(0.05,0.10,p), smooth(0.12,0.3,p)); // apaga no colapso, reacende azul
 
   // 2) casca de neutrinos: quase invisível (0.04), expande antes da luz
   neu.scale.setScalar(lerp(0.3,11.0,smooth(0,0.09,p)));
@@ -245,14 +247,14 @@ function update(p){
   ejMat.uniforms.uTime.value=0.6+ej*3.5;
   ejMat.uniforms.uTemp.value=uTemp;
   ejMat.uniforms.uBlue.value=blue;
-  ejMat.uniforms.uOpacity.value=0.95*smooth(0.082,0.14,p)*(1-0.55*smooth(0.55,1.0,p));
+  ejMat.uniforms.uOpacity.value=0.95*smooth(0.082,0.14,p)*(1-0.95*smooth(0.45,1.0,p)); // nuvem dispersa no fim (o gigante azul domina)
 
   // 5) partículas de ejeta
   pts.visible=p>0.082;
   ptsMat.uniforms.uExpand.value=lerp(0.15,S.exp*1.4,ej);
   ptsMat.uniforms.uTemp.value=uTemp;
   ptsMat.uniforms.uBlue.value=blue;
-  ptsMat.uniforms.uOpacity.value=smooth(0.082,0.16,p)*(1-0.7*smooth(0.6,1.0,p));
+  ptsMat.uniforms.uOpacity.value=smooth(0.082,0.16,p)*(1-0.96*smooth(0.5,1.0,p));
 
   // 6) frente de choque (à frente, mais rápida)
   shock.visible=p>0.082&&p<0.95;
@@ -269,6 +271,9 @@ function update(p){
   // 8) remanescente
   remnant.visible=p>0.8;
   remMat.opacity=smooth(0.8,0.95,p);
+
+  // auto-enquadra: a câmera recua conforme a ejeta expande (mantém em quadro)
+  camera.position.z=9+scale*3.2+S.zoom;
 
   // HUD + bloom
   el('simt').textContent=fmtT(simT);
@@ -289,7 +294,7 @@ let drag=false,px=0,py=0,ry=0.3,rx=0.1;
 cv.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;});
 addEventListener('pointerup',()=>drag=false);
 addEventListener('pointermove',e=>{ if(!drag)return; ry+=(e.clientX-px)*0.005; rx+=(e.clientY-py)*0.005; px=e.clientX;py=e.clientY; });
-addEventListener('wheel',e=>{ camera.position.z=clamp(camera.position.z+Math.sign(e.deltaY)*1.2,6,60); },{passive:true});
+addEventListener('wheel',e=>{ S.zoom=clamp(S.zoom+Math.sign(e.deltaY)*2,-7,50); },{passive:true}); // ajuste fino sobre o auto-enquadro
 
 el('disparar').onclick=()=>{ S.p=0; S.playing=true; el('play').textContent='⏸ PAUSE'; };
 el('play').onclick=()=>{ S.playing=!S.playing; el('play').textContent=S.playing?'⏸ PAUSE':'▶ PLAY'; };
