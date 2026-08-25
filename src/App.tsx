@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactWrong, playSupernovaBirth } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -13,7 +13,7 @@ import { Reticle } from './components/Reticle';
 import { PlanetCard } from './components/PlanetCard';
 import { AnomalyCard } from './components/AnomalyCard';
 import { IntroGate } from './components/IntroGate';
-import { SupernovaHint } from './components/SupernovaHint';
+import { ResetTerminal } from './components/ResetTerminal';
 import * as S from './App.styles';
 
 export default function App() {
@@ -24,16 +24,27 @@ export default function App() {
   const [hoverAnomaly, setHoverAnomaly] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState(false);
-  const [sunDead, setSunDead] = useState(false); // núcleo colapsou -> mostra a dica do enigma
+  const [sunDead, setSunDead] = useState(false); // núcleo colapsou (supernova) -> rescaldo
+  const [simKey, setSimKey] = useState(0); // remontar a cena p/ "reiniciar simulação"
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
   const planetOverlayRef = useRef<HTMLDivElement | null>(null);
   const planetCardRef = useRef<HTMLDivElement | null>(null);
   const selRef = useRef<number | null>(null);
+  const sunDeadRef = useRef(false);
   useEffect(() => {
     selRef.current = sel;
   }, [sel]);
+  useEffect(() => { sunDeadRef.current = sunDead; }, [sunDead]);
+
+  // reinicia a simulação: remonta a cena (estado inicial) e limpa o HUD
+  const resetSim = useCallback(() => {
+    stopAllSfx();
+    setSel(null); setHoverPlanet(null); setHoverAnomaly(null); setHoverRing(null);
+    setManual(false); setSunDead(false);
+    setSimKey((k) => k + 1);
+  }, []);
 
   const termLines = useTerminal(lang, started);
   const pt = lang === 'pt';
@@ -66,7 +77,7 @@ export default function App() {
       bloom: 1.0,
       sections: SECTIONS,
       onHover: (s) => setHoverRing(selRef.current == null ? s : null),
-      onSelect: (_s, idx) => select(idx),
+      onSelect: (_s, idx) => { if (sunDeadRef.current) return; select(idx); }, // sem navegação no rescaldo
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
       onAnomalyClick: (key) => {
@@ -76,11 +87,10 @@ export default function App() {
       },
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
-      // Enigma "Contatos Imediatos" (pós-supernova)
-      onSunDead: () => { setSunDead(true); window.setTimeout(() => playContactMotif(), 9000); }, // dica + convite
+      onSunDead: () => setSunDead(true),             // núcleo colapsou -> rescaldo + terminal
+      onReborn: () => playSupernovaBirth(),          // gigante azul se forma -> som do renascimento
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),
-      onContactSolved: () => { setSunDead(false); playSupernovaBirth(); }, // resolvido -> som do renascimento + some a dica
 
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
@@ -118,7 +128,7 @@ export default function App() {
       api.dispose();
       sceneApiRef.current = null;
     };
-  }, [select]);
+  }, [select, simKey]); // simKey muda -> remonta a cena (reiniciar simulação)
 
   // Fecha o painel com Escape.
   useEffect(() => {
@@ -166,19 +176,20 @@ export default function App() {
       <GlobalStyle />
       <S.CanvasMount ref={canvasRef} $shift={canvasShift} />
 
-      {!focused && <LangToggle label={content.langLabel} onClick={toggleLang} />}
+      {!focused && !sunDead && <LangToggle label={content.langLabel} onClick={toggleLang} />}
 
-      {started && manual && !focused && (
+      {started && manual && !focused && !sunDead && (
         <S.ManualHint>
           {pt ? 'CÂMERA LIVRE' : 'FREE CAMERA'}
           <span>{pt ? 'arraste p/ girar · toque no núcleo p/ soltar' : 'drag to rotate · tap core to release'}</span>
         </S.ManualHint>
       )}
 
-      {started && sunDead && <SupernovaHint lang={lang} />}
+      {/* rescaldo da supernova: portfólio some, aparece o terminal de reset */}
+      {started && sunDead && <ResetTerminal lang={lang} onReset={resetSim} />}
 
-      {/* HUD entra em cena só depois do "iniciar" */}
-      {started && (
+      {/* HUD do portfólio: some no rescaldo (sunDead) até reiniciar a simulação */}
+      {started && !sunDead && (
         <>
           <Console lines={termLines} />
 
@@ -194,7 +205,7 @@ export default function App() {
         </>
       )}
 
-      {focused && selId && (
+      {focused && selId && !sunDead && (
         <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
       )}
 

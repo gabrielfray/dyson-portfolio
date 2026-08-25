@@ -18,7 +18,8 @@ export interface DysonSceneOptions {
   onManual?: (manual: boolean) => void; // liga/desliga o controle manual (arraste)
   onDetonate?: () => void; // 100 cliques no núcleo -> supernova (dispara o som sincronizado)
   // Enigma "Contatos Imediatos" (após a supernova): tocar easter eggs na ordem do sinal
-  onSunDead?: () => void; // o sol morreu -> toca o "convite" (5 tons) como dica
+  onSunDead?: () => void; // o núcleo colapsou (supernova) -> rescaldo/terminal
+  onReborn?: () => void;   // a gigante azul terminou de se formar -> som do renascimento
   onContactTone?: (toneIndex: number) => void; // tom de um egg clicado (0..4)
   onContactWrong?: () => void; // clique fora da sequência -> reinicia
   onContactSolved?: () => void; // sequência completa -> renascimento

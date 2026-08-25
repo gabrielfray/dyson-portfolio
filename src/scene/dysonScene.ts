@@ -64,6 +64,12 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const galaxies = createGalaxies(scene);
   const sun = createSun(scene, isMobile);
   const { dyson, shell, rings } = createDysonStructure(scene);
+  // materiais da estrutura de Dyson — p/ vaporizar (fade) no pós-supernova
+  const dysonMats: THREE.Material[] = [];
+  [dyson, shell, ...rings].forEach((o) => o.traverse((n) => {
+    const mm = (n as THREE.Mesh).material;
+    if (mm) (Array.isArray(mm) ? mm : [mm]).forEach((m) => { m.transparent = true; dysonMats.push(m); });
+  }));
   const { planets, planetPick } = createPlanets(scene);
   const { anomalies, update: updateAnomalies, trigger: triggerAnomaly } = createAnomalies(scene, camera);
   const anomalyPick = anomalies.map((a) => a.pick);
@@ -156,7 +162,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
-  let contactProgress = 0, sunDeadFired = false;
+  let contactProgress = 0, sunDeadFired = false, rebornFired = false;
   let irStart = -1, irStopAt = -1; // modo infravermelho (véus / linha de Petrova)
   let irLocked = false; // enquanto travado, cliques não encerram o evento — só a música ao acabar
   const ESPECTRO = { drainDepth: 0.85, fade: 2.4, maxHold: 90 }; // drainDepth = profundidade do vale (0.93 ~ preto total); fade = saída suave; maxHold = segurança
@@ -451,13 +457,21 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     }
     stars.update(t, ir);
     sun.update(t, dt, ir);
-    if (sun.state.dead && !sunDeadFired) { sunDeadFired = true; opts.onSunDead?.(); } // convite do enigma
+    if (sun.state.dead && !sunDeadFired) { sunDeadFired = true; opts.onSunDead?.(); } // rescaldo -> terminal
+    if (sun.state.reborn && !rebornFired) { rebornFired = true; opts.onReborn?.(); } // gigante azul formada
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;
-    // após a detonação, a onda de choque destrói os planetas (menos Plutão)
+    // casca de Dyson vaporiza ~0,83s após o blast (radiação a 1 UA) — some sob o clarão
+    const vap = sun.state.exploding ? smoothstep(SN_BLAST_AT + 0.83, SN_BLAST_AT + 1.7, sun.state.et) : 0;
+    if (vap > 0) {
+      for (const m of dysonMats) m.opacity = 1 - vap;
+      const on = vap < 0.995; dyson.visible = on; shell.visible = on; rings.forEach((r) => { r.visible = on; });
+    }
+    // pós-supernova: destruição por radiação + sobreviventes marcados (autoluminosos)
+    const after = sun.state.dead ? smoothstep(SN_BLAST_AT + 2, SN_BLAST_AT + 6, sun.state.et) : 0;
     const blastT = sun.state.exploding && sun.state.et > SN_BLAST_AT ? sun.state.et - SN_BLAST_AT : -1;
-    updatePlanets(planets, dt, planetHover, blastT, ir);
+    updatePlanets(planets, dt, planetHover, blastT, ir, after);
     updateAnomalies(t, userZoom, ir);
     updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)
     updateAstro(t, ir); // brilho de fundo (só no IR)

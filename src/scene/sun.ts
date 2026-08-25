@@ -322,18 +322,23 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
         ptsMat.opacity = ptOp;
         ptsMat.color.setRGB(1, lerp(1, 0.35, cool), lerp(0.9, 0.12, cool));
 
-        // núcleo exposto: some no clarão e reacende como ponto AZUL-BRANCO pálido
-        // (não LED — o brilho vende a temperatura). Vira a semente do gigante azul.
+        // núcleo exposto some no clarão, reacende azul-branco pálido e, depois da
+        // nuvem dispersar, CRESCE sozinho até uma GIGANTE AZUL (fim do arco).
         if (e2 < 0.9) {
           sun.visible = false;
+          glow.visible = false;
           sunLight.intensity = 300 + state.flash * 42000 + Math.max(0, 1 - smooth(0.1, 1.0, e2)) * 3000;
         } else {
-          const k = smooth(0.9, 2.2, e2);
+          rebornMix = smooth(0.9, 2.5, e2);        // paleta migra p/ azul (glow via bgr)
+          const grow = smooth(3.4, 7.2, e2);       // incha até gigante azul após dispersar
           sun.visible = true;
-          sun.scale.setScalar(0.16);
-          sunMat.color.setRGB(0.62, 0.78, 1.0); // #9EC7FF núcleo exposto
+          sun.scale.setScalar(lerp(0.16, 1.4, grow) * (1 + Math.sin(e2 * 1.3) * 0.02 * grow));
+          sunMat.color.setRGB(0.62, 0.78, 1.0);    // #9EC7FF azul-branco pálido (não LED)
           sunLight.color.setRGB(0.7, 0.82, 1.0);
-          sunLight.intensity = lerp(300, 120, k);
+          sunLight.intensity = lerp(140, 2600, grow);
+          glow.visible = grow > 0.02;
+          glow.scale.setScalar(lerp(0.25, 1.2, grow));
+          if (grow >= 0.999 && !state.reborn) state.reborn = true; // gigante azul formada
         }
 
         state.shake = Math.max(state.flash, 0.3 * (1 - smooth(0, 1.0, e2)));

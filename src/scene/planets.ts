@@ -18,7 +18,15 @@ export interface PlanetRt {
   deadT: number;
   fx: PlanetFx | null; // efeito de destruição (criado ao morrer)
   irMats: THREE.ShaderMaterial[]; // materiais que recebem o tom infravermelho (corpo, atmosfera, anel)
+  ring: THREE.Mesh | null; // anel (Saturno) — sublima no pós-supernova
+  tail: THREE.Mesh | null; // cauda cometária (sobreviventes) — atmosfera arrancada
 }
+
+// Cauda cometária: cone aditivo que flui radialmente p/ longe da estrela (origem).
+// Estreito e brilhante no planeta, alargando e esmaecendo p/ fora.
+const TAIL_VERT = `varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const TAIL_FRAG = `uniform float uOpacity; uniform vec3 uColor; varying float vY;
+  void main(){ float a = vY * vY; gl_FragColor = vec4(uColor, a * uOpacity); }`;
 
 interface PlanetFx {
   group: THREE.Group;
@@ -251,6 +259,8 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const size = p.bodyPx * BODY_SCALE * PX_TO_WORLD;
     const surfTex = planetTexture(p.key);
     const irMats: THREE.ShaderMaterial[] = [];
+    let planetRing: THREE.Mesh | null = null;
+    let planetTail: THREE.Mesh | null = null;
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(surfTex ? 0xffffff : p.color) },
@@ -258,6 +268,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
         uSpec: { value: 0.22 + p.metal * 0.9 },
         uAmbient: { value: 0.08 }, // piso p/ o lado escuro não sumir
         uIr: { value: 0 },
+        uAfter: { value: 0 }, // pós-supernova: sobrevivente autoluminoso
         uMap: { value: surfTex ?? whiteTex },
       },
       vertexShader: PLANET_VERT,
@@ -292,9 +303,10 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
         depthWrite: false,
       });
       irMats.push(ringMat);
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.set(Math.PI / 2 - 0.45, 0, 0); // levemente inclinado
-      body.add(ring);
+      const rMesh = new THREE.Mesh(ringGeo, ringMat);
+      rMesh.rotation.set(Math.PI / 2 - 0.45, 0, 0); // levemente inclinado
+      body.add(rMesh);
+      planetRing = rMesh;
     }
     // esfera invisível maior p/ facilitar o hover (planetas são pequenos)
     const pick = new THREE.Mesh(new THREE.SphereGeometry(Math.max(size * 4, 5), 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
@@ -304,13 +316,29 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const pivot = new THREE.Group(); // gira em Y -> órbita circular no plano XZ (eclíptica)
     pivot.add(body);
     solar.add(pivot);
+    // cauda cometária p/ os sobreviventes que são castigados (4 gigantes). Fica
+    // no pivot (não gira com o corpo) apontando +X = radialmente p/ longe da estrela.
+    if (['jupiter', 'saturno', 'urano', 'netuno'].includes(p.key)) {
+      const h = size * 12;
+      const tailMat = new THREE.ShaderMaterial({
+        uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(0.6, 0.75, 1.0) } },
+        vertexShader: TAIL_VERT, fragmentShader: TAIL_FRAG,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      });
+      const t = new THREE.Mesh(new THREE.ConeGeometry(size * 1.6, h, 20, 1, true), tailMat);
+      t.rotation.z = Math.PI / 2;   // ápice (estreito/brilhante) no planeta, base p/ fora
+      t.position.x = r + h / 2;      // base alarga p/ longe da origem
+      t.visible = false;
+      pivot.add(t);
+      planetTail = t;
+    }
     // Destruição por RADIAÇÃO (não pelo choque): só os rochosos têm energia de
     // ligação baixa o suficiente p/ desintegrar. Morrem na chegada da LUZ, em
     // sequência (tempo-luz ~ 8,32 min/UA, comprimido ×0.1): Mercúrio 0,32s ->
     // Vênus 0,60s -> Terra 0,83s -> Marte 1,26s. Gigantes/gelo/Plutão sobrevivem.
     const ROCKY = new Set(['mercurio', 'venus', 'terra', 'marte']);
     const destroyAt = ROCKY.has(p.key) ? 0.83 * p.au : Infinity;
-    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats });
+    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats, ring: planetRing, tail: planetTail });
   });
 
   return { planets, planetPick };
@@ -318,11 +346,15 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
 
 // Avança as órbitas (kepleriano) e a rotação própria; congela o planeta sob o
 // cursor (planetHover) para leitura estável do card.
-export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0) {
+export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0, after = 0) {
   planets.forEach((p, i) => {
     for (const m of p.irMats) m.uniforms.uIr.value = ir; // tom infravermelho (Petrova)
     if (p.dead) { p.deadT += dt; animateBurst(p); return; } // destruído: só anima o burst
-    if (blastT >= 0 && blastT >= p.destroyAt) { killPlanet(p); return; } // onda de choque chegou
+    if (blastT >= 0 && blastT >= p.destroyAt) { killPlanet(p); return; } // radiação chegou -> desintegra
+    // sobreviventes no pós-supernova: autoluminosos, anéis somem, cauda cometária
+    (p.body.material as THREE.ShaderMaterial).uniforms.uAfter.value = after;
+    if (p.ring) p.ring.visible = after < 0.5; // anéis de gelo sublimam
+    if (p.tail) { p.tail.visible = after > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = after * 0.6; }
     if (i !== planetHover) p.angle += p.omega * dt;
     p.pivot.rotation.y = p.angle;
     p.body.rotation.y += p.spin * dt;
