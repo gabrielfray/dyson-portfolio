@@ -331,7 +331,10 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
           renderer.domElement.style.cursor = manual ? 'grab' : '';
           opts.onManual?.(manual);
         }
-        if (coreClicks >= CORE_CLICKS_TO_DETONATE && !sun.state.exploding) { sun.detonate(); coreClicks = 0; opts.onDetonate?.(); }
+        // a supernova renascida não pode ser detonada de novo
+        if (coreClicks >= CORE_CLICKS_TO_DETONATE && !sun.state.exploding && !sun.state.reviving && !sun.state.reborn) {
+          sun.detonate(); coreClicks = 0; opts.onDetonate?.();
+        }
         return;
       }
       // planeta -> revela o card (no toque não há hover)

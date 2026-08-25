@@ -134,10 +134,36 @@ export function playContactMotif(): void {
 export function playContactWrong(): void {
   const ac = getCtx(); contactTone(ac, 98, ac.currentTime, 0.3, 0.16);
 }
-// resolvido: pequeno arpejo ascendente antes do renascimento
-export function playContactSolved(): void {
-  const ac = getCtx(); let t = ac.currentTime; const seq = [261.63, 329.63, 392.0, 523.25, 659.25];
-  for (let i = 0; i < seq.length; i++) { contactTone(ac, seq[i], t, 0.6, 0.26); t += 0.13; }
+// renascimento: swell cósmico luminoso (acorde maior ascendente + shimmer agudo
+// + impacto grave), sincronizado com o clarão azul da supernova renascendo.
+export function playSupernovaBirth(): void {
+  const ac = getCtx(); const t0 = ac.currentTime;
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, t0);
+  master.gain.linearRampToValueAtTime(0.34, t0 + 0.5);
+  master.gain.exponentialRampToValueAtTime(0.0008, t0 + 3.4);
+  master.connect(ac.destination);
+  // acorde maior que sobe uma oitava em ~0.6s (a estrela "acendendo")
+  for (const f of [261.63, 329.63, 392.0, 523.25, 659.25]) {
+    const o = ac.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(f * 0.5, t0);
+    o.frequency.exponentialRampToValueAtTime(f, t0 + 0.6);
+    const g = ac.createGain(); g.gain.value = 0.15;
+    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 3.5);
+  }
+  // shimmer agudo que floresce junto com o clarão
+  for (const f of [1046.5, 1318.5, 1568.0]) {
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.07, t0 + 0.4); g.gain.exponentialRampToValueAtTime(0.0006, t0 + 2.4);
+    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 2.5);
+  }
+  // impacto grave (whoosh) no instante do estouro azul
+  const sub = ac.createOscillator(); sub.type = 'sine';
+  sub.frequency.setValueAtTime(120, t0); sub.frequency.exponentialRampToValueAtTime(52, t0 + 0.9);
+  const sg = ac.createGain();
+  sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.26, t0 + 0.18); sg.gain.exponentialRampToValueAtTime(0.0006, t0 + 1.5);
+  sub.connect(sg); sg.connect(master); sub.start(t0); sub.stop(t0 + 1.6);
 }
 
 // --- Eggs com arquivo de áudio (public/sounds/<arquivo>) ---

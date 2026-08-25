@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playContactSolved } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -80,7 +80,7 @@ export default function App() {
       onSunDead: () => { setSunDead(true); window.setTimeout(() => playContactMotif(), 9000); }, // dica + convite
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),
-      onContactSolved: () => { setSunDead(false); playContactSolved(); }, // resolvido -> some a dica
+      onContactSolved: () => { setSunDead(false); playSupernovaBirth(); }, // resolvido -> som do renascimento + some a dica
 
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;

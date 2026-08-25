@@ -115,7 +115,7 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   return {
     state,
     detonate: () => {
-      if (state.exploding) return;
+      if (state.exploding || state.reviving || state.reborn) return; // não redetona a supernova renascida
       state.exploding = true;
       state.et = 0;
     },
