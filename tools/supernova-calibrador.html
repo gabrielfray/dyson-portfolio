@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUPERNOVA · calibrador</title>
+<!-- three via CDN: abra este arquivo DIRETO no navegador (duplo-clique / arraste
+     pra uma aba). Precisa de internet. Não depende do dev server do projeto. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.185.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.185.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root{--ambar:#F2B872;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--linha:#242424}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden;font-family:var(--mono);color:#b9b9b9}
+  #cv{position:fixed;inset:0}
+  /* flash do shock breakout: branco por cima de tudo */
+  #flash{position:fixed;inset:0;background:#eaf2ff;opacity:0;pointer-events:none;z-index:5;mix-blend-mode:screen}
+  #hud{position:fixed;top:18px;left:18px;z-index:10;font-size:11px;letter-spacing:.06em;line-height:1.9;pointer-events:none;text-shadow:0 1px 4px #000}
+  #hud .k{color:#6a6a6a;letter-spacing:.2em}
+  #hud .simt{color:var(--ambar);font-size:22px;letter-spacing:.08em}
+  #hud .fase{color:#fff;font-size:12px;letter-spacing:.16em;margin-top:2px}
+  #hud .neu{color:#8fd0ff;min-height:16px;letter-spacing:.14em}
+  #painel{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:10;width:min(760px,94vw);
+          background:rgba(8,8,10,.82);border:1px solid var(--linha);border-radius:12px;padding:14px 16px;backdrop-filter:blur(8px)}
+  .linha{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .scrub{flex:1;min-width:220px}
+  input[type=range]{width:100%;accent-color:var(--ambar);background:transparent}
+  label{display:block;font-size:9px;letter-spacing:.18em;color:#6a6a6a;margin-bottom:5px}
+  .ctrl{width:120px}
+  button{padding:11px 16px;border:1px solid #2b2b2b;border-radius:999px;background:rgba(10,10,10,.7);
+         color:#9a9a9a;font:inherit;font-size:11px;letter-spacing:.18em;cursor:pointer;transition:.2s}
+  button:hover{border-color:var(--ambar);color:#fff}
+  button.pri{border-color:var(--ambar);color:#fff}
+  .val{color:#cfcfcf}
+  .barra{display:flex;height:6px;border-radius:4px;overflow:hidden;margin-top:10px;border:1px solid var(--linha)}
+  .barra i{display:block;height:100%}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="flash"></div>
+
+<div id="hud">
+  <div class="k">GF://SUPERNOVA · SIM</div>
+  <div class="simt" id="simt">+0.25 s</div>
+  <div class="fase" id="fase">—</div>
+  <div class="neu" id="neu"></div>
+</div>
+
+<div id="painel">
+  <div class="linha">
+    <button class="pri" id="disparar">DISPARAR</button>
+    <button id="play">▶ PLAY</button>
+    <div class="scrub">
+      <label>LINHA DO TEMPO · <span class="val" id="pct">0%</span></label>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <div class="barra" id="fases"></div>
+    </div>
+  </div>
+  <div class="linha" style="margin-top:12px">
+    <div class="ctrl"><label>DURAÇÃO · <span class="val" id="vdur">25</span>s</label><input type="range" id="dur" min="10" max="60" value="25"></div>
+    <div class="ctrl"><label>RAYLEIGH-TAYLOR · <span class="val" id="vamp">0.90</span></label><input type="range" id="amp" min="0" max="150" value="90"></div>
+    <div class="ctrl"><label>EXPANSÃO · <span class="val" id="vexp">4.5</span></label><input type="range" id="exp" min="20" max="90" value="45"></div>
+    <div class="ctrl"><label>BLOOM · <span class="val" id="vbloom">1.1</span></label><input type="range" id="bloom" min="0" max="30" value="11"></div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+
+// ---- GLSL compartilhado ----
+const NOISE=`
+  float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+  float vnoise(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+    return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+  float fbm(vec3 p){ float s=0.0,a=0.5; for(int i=0;i<4;i++){ s+=a*vnoise(p); p*=2.0; a*=0.5; } return s; }`;
+// corpo negro (aprox. Tanner Helland) -> cor vem da TEMPERATURA, não de paleta
+const BLACKBODY=`
+  vec3 blackbody(float k){ k=clamp(k,1000.0,40000.0)/100.0; float r,g,b;
+    if(k<=66.0)r=1.0; else { r=k-60.0; r=1.29293618606*pow(r,-0.1332047592); }
+    if(k<=66.0){ g=k; g=0.39008157876*log(g)-0.63184144378; } else { g=k-60.0; g=1.12989086089*pow(g,-0.0755148492); }
+    if(k>=66.0)b=1.0; else if(k<=19.0)b=0.0; else { b=k-10.0; b=0.54320678911*log(b)-1.19625408914; }
+    return clamp(vec3(r,g,b),0.0,1.0); }`;
+
+// ---- cena ----
+const cv=document.getElementById('cv');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+THREE.ColorManagement.enabled=false;
+renderer.outputColorSpace=THREE.LinearSRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.1,2000);
+camera.position.set(0,0,16);
+const sys=new THREE.Group(); scene.add(sys);
+
+// estrelas de fundo (referência de escala)
+{ const g=new THREE.BufferGeometry(); const N=1200; const p=new Float32Array(N*3);
+  for(let i=0;i<N;i++){ const v=new THREE.Vector3().randomDirection().multiplyScalar(400+Math.random()*400); p.set([v.x,v.y,v.z],i*3); }
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:1.1,color:0x8895aa,sizeAttenuation:false}))); }
+
+// 1) núcleo da estrela (pré-colapso: encolhe e escurece)
+const coreMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true});
+const core=new THREE.Mesh(new THREE.SphereGeometry(1,48,48),coreMat); sys.add(core);
+
+// 2) casca de neutrinos: fresnel quase invisível, expande rápido
+const neuMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.BackSide,
+  uniforms:{uOpacity:{value:0}},
+  vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+  fragmentShader:`varying vec3 vN; varying vec3 vV; uniform float uOpacity; void main(){ float f=pow(1.0-max(dot(vN,vV),0.0),2.0); gl_FragColor=vec4(vec3(0.6,0.8,1.0), f*uOpacity); }`});
+const neu=new THREE.Mesh(new THREE.SphereGeometry(1,32,24),neuMat); sys.add(neu);
+
+// 4) ejeta com instabilidades de Rayleigh-Taylor (icosaedro deslocado por fbm)
+const ejMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+  uniforms:{uTime:{value:0},uAmp:{value:0.9},uScale:{value:1},uTemp:{value:40000},uOpacity:{value:0}},
+  vertexShader:`${NOISE}
+    uniform float uTime; uniform float uAmp; uniform float uScale;
+    varying float vN2; varying vec3 vNorm; varying vec3 vView;
+    void main(){ vec3 dir=normalize(position);
+      float n=fbm(dir*2.6 + uTime); // dedos crescem onde n é alto
+      float disp=1.0 + uAmp*(n-0.42);
+      vec3 pos=dir*uScale*disp; vN2=n;
+      vec4 mv=modelViewMatrix*vec4(pos,1.0); vNorm=normalize(normalMatrix*dir); vView=normalize(-mv.xyz);
+      gl_Position=projectionMatrix*mv; }`,
+  fragmentShader:`${BLACKBODY}
+    uniform float uTemp; uniform float uOpacity;
+    varying float vN2; varying vec3 vNorm; varying vec3 vView;
+    void main(){ vec3 col=blackbody(uTemp);
+      float rim=pow(1.0-max(dot(vNorm,vView),0.0),1.4);
+      float knot=0.35+0.9*vN2;                 // nós/filamentos mais brilhantes
+      gl_FragColor=vec4(col*knot*(0.5+0.9*rim), uOpacity*(0.35+0.65*vN2)); }`});
+const ejMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(1,6),ejMat); ejMesh.visible=false; sys.add(ejMesh);
+
+// 5) partículas de ejeta (velocidade radial log-normal + nós de densidade)
+const PN=52000;
+const dir=new Float32Array(PN*3), spd=new Float32Array(PN);
+const knots=Array.from({length:7},()=>new THREE.Vector3().randomDirection());
+for(let i=0;i<PN;i++){
+  let v;
+  if(Math.random()<0.34){ // ~1/3 concentrados em nós
+    const k=knots[(Math.random()*knots.length)|0];
+    v=k.clone().add(new THREE.Vector3().randomDirection().multiplyScalar(0.32)).normalize();
+  } else v=new THREE.Vector3().randomDirection();
+  dir.set([v.x,v.y,v.z],i*3);
+  spd[i]=Math.exp(-0.35 + 0.5*(Math.random()+Math.random()+Math.random()-1.5)); // log-normal (~0.5..1.6)
+}
+const ptsGeo=new THREE.BufferGeometry();
+ptsGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(PN*3),3));
+ptsGeo.setAttribute('aDir',new THREE.BufferAttribute(dir,3));
+ptsGeo.setAttribute('aSpeed',new THREE.BufferAttribute(spd,1));
+const ptsMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  uniforms:{uExpand:{value:0},uTemp:{value:40000},uOpacity:{value:0}},
+  vertexShader:`attribute vec3 aDir; attribute float aSpeed; uniform float uExpand;
+    varying float vS; void main(){ vS=aSpeed; vec3 p=aDir*(0.15+aSpeed*uExpand);
+    vec4 mv=modelViewMatrix*vec4(p,1.0); gl_PointSize=(1.5+aSpeed*2.5)*(300.0/-mv.z); gl_Position=projectionMatrix*mv; }`,
+  fragmentShader:`${BLACKBODY}
+    uniform float uTemp; uniform float uOpacity; varying float vS;
+    void main(){ vec2 d=gl_PointCoord-0.5; float r=length(d); if(r>0.5) discard;
+      float a=smoothstep(0.5,0.0,r); vec3 col=blackbody(uTemp*(0.7+0.5*vS));
+      gl_FragColor=vec4(col, a*uOpacity*(0.4+0.6*vS)); }`});
+const pts=new THREE.Points(ptsGeo,ptsMat); pts.frustumCulled=false; pts.visible=false; sys.add(pts);
+
+// 6) frente de choque: casca fina brilhante, expande mais rápido que a ejeta
+const shockMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.BackSide,
+  uniforms:{uOpacity:{value:0},uTemp:{value:40000}},
+  vertexShader:`varying vec3 vN; varying vec3 vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+  fragmentShader:`${BLACKBODY} varying vec3 vN; varying vec3 vV; uniform float uOpacity; uniform float uTemp;
+    void main(){ float f=pow(1.0-max(dot(vN,vV),0.0),3.5); gl_FragColor=vec4(blackbody(uTemp)*1.4, f*uOpacity); }`});
+const shock=new THREE.Mesh(new THREE.SphereGeometry(1,48,32),shockMat); shock.visible=false; sys.add(shock);
+
+// 7) eco de luz: anel iluminando poeira preexistente (projeção "superluminal")
+const echoMat=new THREE.MeshBasicMaterial({color:0x9ab4ff,transparent:true,opacity:0,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false});
+const echo=new THREE.Mesh(new THREE.RingGeometry(0.9,1.0,96),echoMat);
+echo.rotation.x=-Math.PI/2.3; echo.visible=false; sys.add(echo);
+
+// 8) remanescente: estrela de nêutrons (ponto azul minúsculo, deslocado = natal kick)
+function dot(){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32); g.addColorStop(0,'#fff'); g.addColorStop(.3,'#bcd8ff'); g.addColorStop(1,'rgba(120,170,255,0)');
+  x.fillStyle=g; x.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); }
+const remMat=new THREE.SpriteMaterial({map:dot(),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+const remnant=new THREE.Sprite(remMat); remnant.scale.setScalar(0.6); remnant.position.set(0.5,-0.28,0.15); remnant.visible=false; sys.add(remnant);
+
+// bloom
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.1,0.8,0.6);
+composer.addPass(bloom);
+
+// ---- estado / timeline ----
+const S={p:0,playing:false,dur:25,amp:0.9,exp:4.5,bloom:1.1};
+const flashEl=document.getElementById('flash');
+const el=id=>document.getElementById(id);
+
+function fmtT(s){ if(s<1)return '+'+s.toFixed(2)+' s'; if(s<60)return '+'+s.toFixed(1)+' s';
+  if(s<3600)return '+'+(s/60).toFixed(1)+' min'; if(s<86400)return '+'+(s/3600).toFixed(1)+' h'; return '+'+(s/86400).toFixed(1)+' d'; }
+function fase(p){ if(p<0.05)return 'COLAPSO'; if(p<0.075)return 'PULSO DE NEUTRINOS'; if(p<0.11)return 'SHOCK BREAKOUT';
+  if(p<0.42)return 'EJETA · brilho máximo'; if(p<0.8)return 'EXPANSÃO · eco de luz'; return 'REMANESCENTE · estrela de nêutrons'; }
+
+function update(p){
+  // tempo simulado: log de +0.25 s a +30 dias (comprime 7 ordens de magnitude)
+  const simT=0.25*Math.pow(2.592e6/0.25,p);
+  const bt=clamp((p-0.10)/0.9,0,1);
+  const uTemp=Math.exp(lerp(Math.log(40000),Math.log(3200),bt)); // esfria ao expandir (T∝1/r aprox.)
+
+  // 1) pré-colapso: encolhe (531× na vida real) e escurece; some no breakout
+  const col=smooth(0,0.05,p);
+  core.scale.setScalar(lerp(1.0,0.1,col));
+  coreMat.color.setScalar(lerp(1.0,0.25,col));
+  coreMat.opacity=1-smooth(0.05,0.10,p);
+  core.visible=p<0.11;
+
+  // 2) casca de neutrinos: quase invisível (0.04), expande antes da luz
+  neu.scale.setScalar(lerp(0.3,11.0,smooth(0,0.09,p)));
+  neuMat.uniforms.uOpacity.value=0.045*(1-smooth(0.05,0.11,p));
+
+  // 3) shock breakout: flash branco curtíssimo (CSS por cima)
+  const fl=smooth(0.065,0.08,p)*(1-smooth(0.085,0.12,p));
+  flashEl.style.opacity=(fl*0.92).toFixed(3);
+
+  // 4) ejeta com Rayleigh-Taylor
+  const ej=smooth(0.085,1.0,p);
+  const scale=lerp(0.12,S.exp,ej);
+  ejMesh.visible=p>0.082;
+  ejMat.uniforms.uScale.value=scale;
+  ejMat.uniforms.uAmp.value=lerp(0.12,S.amp,ej);      // dedos crescem
+  ejMat.uniforms.uTime.value=0.6+ej*3.5;
+  ejMat.uniforms.uTemp.value=uTemp;
+  ejMat.uniforms.uOpacity.value=0.95*smooth(0.082,0.14,p)*(1-0.55*smooth(0.55,1.0,p));
+
+  // 5) partículas de ejeta
+  pts.visible=p>0.082;
+  ptsMat.uniforms.uExpand.value=lerp(0.15,S.exp*1.4,ej);
+  ptsMat.uniforms.uTemp.value=uTemp;
+  ptsMat.uniforms.uOpacity.value=smooth(0.082,0.16,p)*(1-0.7*smooth(0.6,1.0,p));
+
+  // 6) frente de choque (à frente, mais rápida)
+  shock.visible=p>0.082&&p<0.95;
+  shock.scale.setScalar(scale*1.2);
+  shockMat.uniforms.uTemp.value=uTemp;
+  shockMat.uniforms.uOpacity.value=0.6*smooth(0.082,0.14,p)*(1-smooth(0.5,0.92,p));
+
+  // 7) eco de luz (aparece na fase tardia)
+  echo.visible=p>0.42;
+  echo.scale.setScalar(lerp(1.2,9.0,smooth(0.42,1.0,p)));
+  echoMat.opacity=0.5*smooth(0.42,0.58,p)*(1-smooth(0.78,1.0,p));
+
+  // 8) remanescente
+  remnant.visible=p>0.8;
+  remMat.opacity=smooth(0.8,0.95,p);
+
+  // HUD + bloom
+  el('simt').textContent=fmtT(simT);
+  el('fase').textContent=fase(p);
+  el('neu').textContent = (p>0.02&&p<0.075) ? '⚡ NEUTRINO BURST — 9.9×10⁴⁵ J atravessando tudo' : (p<0.02?'':'');
+  el('pct').textContent=Math.round(p*100)+'%';
+  el('scrub').value=Math.round(p*1000);
+  bloom.strength=S.bloom + fl*4.0 + (1-ej)*0.4;
+}
+
+// ---- barra de fases (visual) ----
+(function(){ const segs=[[0,0.05,'#3a4a6a','colapso'],[0.05,0.11,'#2f6a8f','neutrinos/breakout'],
+  [0.11,0.42,'#cfe0ff','brilho'],[0.42,0.8,'#8fb0ff','expansão'],[0.8,1,'#5570b0','remanescente']];
+  el('fases').innerHTML=segs.map(s=>`<i style="width:${(s[1]-s[0])*100}%;background:${s[2]}" title="${s[3]}"></i>`).join(''); })();
+
+// ---- interação ----
+let drag=false,px=0,py=0,ry=0.3,rx=0.1;
+cv.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;});
+addEventListener('pointerup',()=>drag=false);
+addEventListener('pointermove',e=>{ if(!drag)return; ry+=(e.clientX-px)*0.005; rx+=(e.clientY-py)*0.005; px=e.clientX;py=e.clientY; });
+addEventListener('wheel',e=>{ camera.position.z=clamp(camera.position.z+Math.sign(e.deltaY)*1.2,6,60); },{passive:true});
+
+el('disparar').onclick=()=>{ S.p=0; S.playing=true; el('play').textContent='⏸ PAUSE'; };
+el('play').onclick=()=>{ S.playing=!S.playing; el('play').textContent=S.playing?'⏸ PAUSE':'▶ PLAY'; };
+el('scrub').oninput=e=>{ S.p=e.target.value/1000; S.playing=false; el('play').textContent='▶ PLAY'; };
+const bind=(id,key,f,fmt)=>{ el(id).oninput=e=>{ S[key]=f(+e.target.value); el('v'+id).textContent=fmt(S[key]); }; };
+bind('dur','dur',v=>v,v=>v);
+bind('amp','amp',v=>v/100,v=>v.toFixed(2));
+bind('exp','exp',v=>v/10,v=>v.toFixed(1));
+bind('bloom','bloom',v=>v/10,v=>v.toFixed(1));
+
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); });
+
+let last=performance.now();
+function loop(now){ const dt=(now-last)/1000; last=now;
+  if(S.playing){ S.p+=dt/S.dur; if(S.p>=1){S.p=1;S.playing=false;el('play').textContent='▶ PLAY';} }
+  sys.rotation.y=ry; sys.rotation.x=rx;
+  update(S.p);
+  composer.render();
+  requestAnimationFrame(loop);
+}
+update(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
