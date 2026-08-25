@@ -215,7 +215,7 @@ export default function App() {
           {hoverAnomaly !== null ? (
             <AnomalyCard key={hoverAnomaly + '-' + lang} anomKey={hoverAnomaly} lang={lang} innerRef={planetCardRef} />
           ) : (
-            <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} />
+            <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang + (sunDead ? '-x' : '')} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} after={sunDead} />
           )}
         </S.PlanetOverlay>
       )}

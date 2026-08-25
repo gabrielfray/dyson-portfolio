@@ -25,3 +25,25 @@ export function buildPlanetRows(planet: PlanetInfo, lang: Lang): CardRow[] {
     { label: L.status, value: pt ? planet.status.pt : planet.status.en },
   ];
 }
+
+// Sobreviventes marcados pela supernova (gigantes castigados). T de equilíbrio
+// do lado dia (K), calculada em cima do evento. Rochosos foram desintegrados.
+const AFTER_T: Record<string, number> = { jupiter: 30687, saturno: 22666, urano: 15978, netuno: 12765 };
+export const isSurvivorMarked = (key: string) => key in AFTER_T;
+
+// Linhas do card no rescaldo: corpo autoluminoso, atmosfera fervendo/arrancada,
+// cauda cometária, anéis sublimados (Saturno). Dados pós-supernova.
+export function buildAfterRows(planet: PlanetInfo, lang: Lang): CardRow[] {
+  const pt = lang === 'pt';
+  const L = planetLabels(lang);
+  const nf = (n: number) => n.toLocaleString(pt ? 'pt-BR' : 'en-US', { maximumFractionDigits: 0 });
+  const rows: CardRow[] = [
+    { label: pt ? 'TEMP. DIA' : 'DAY TEMP', value: `${nf(AFTER_T[planet.key])} K`, sub: pt ? 'mais quente que a superfície do Sol' : "hotter than the Sun's surface" },
+    { label: pt ? 'ATMOSFERA' : 'ATMOSPHERE', value: pt ? 'fervendo · arrancada' : 'boiling · stripped' },
+    { label: pt ? 'CAUDA' : 'TAIL', value: pt ? 'cometária · anti-estelar' : 'cometary · anti-stellar' },
+    { label: pt ? 'BRILHO' : 'GLOW', value: pt ? 'autoluminoso' : 'self-luminous' },
+  ];
+  if (planet.key === 'saturno') rows.push({ label: pt ? 'ANÉIS' : 'RINGS', value: pt ? 'sublimados' : 'sublimated' });
+  rows.push({ label: L.status, value: pt ? 'SOBREVIVENTE' : 'SURVIVOR' });
+  return rows;
+}

@@ -1,14 +1,16 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { planetLabels, type Lang, type PlanetInfo } from '../data/content';
-import { buildPlanetRows } from './buildPlanetRows';
+import { buildPlanetRows, buildAfterRows, isSurvivorMarked } from './buildPlanetRows';
 import { Caret } from './Caret';
 import * as S from './PlanetCard.styles';
 
 // Card de dados do planeta, "digitado" como um terminal sci-fi. Plutão tem uma
 // piada: a classificação escreve "planeta", apaga e corrige para "planeta anão".
-export function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lang: Lang; innerRef: RefObject<HTMLDivElement | null> }) {
+// No rescaldo (after), os sobreviventes mostram os dados pós-supernova.
+export function PlanetCard({ planet, lang, innerRef, after = false }: { planet: PlanetInfo; lang: Lang; innerRef: RefObject<HTMLDivElement | null>; after?: boolean }) {
   const L = planetLabels(lang);
-  const rows = buildPlanetRows(planet, lang);
+  const marked = after && isSurvivorMarked(planet.key);
+  const rows = marked ? buildAfterRows(planet, lang) : buildPlanetRows(planet, lang);
 
   const [nameShown, setNameShown] = useState('');
   const [kindShown, setKindShown] = useState('');
@@ -21,9 +23,9 @@ export function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lan
     const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
     const pt = lang === 'pt';
     const nm = pt ? planet.name.pt : planet.name.en;
-    const kindFinal = pt ? planet.type.pt : planet.type.en;
-    const vals = buildPlanetRows(planet, lang).map((r) => r.value);
-    const isPluto = planet.key === 'plutao';
+    const kindFinal = marked ? (pt ? 'pós-supernova' : 'post-supernova') : (pt ? planet.type.pt : planet.type.en);
+    const vals = (marked ? buildAfterRows(planet, lang) : buildPlanetRows(planet, lang)).map((r) => r.value);
+    const isPluto = planet.key === 'plutao' && !marked;
     (async () => {
       await sleep(120); // deixa o estado inicial (limpo via key) assentar antes de digitar
       for (let i = 1; i <= nm.length; i++) { if (cancelled) return; setNameShown(nm.slice(0, i)); await sleep(28); }
@@ -49,7 +51,7 @@ export function PlanetCard({ planet, lang, innerRef }: { planet: PlanetInfo; lan
       if (!cancelled) setCaret('done');
     })();
     return () => { cancelled = true; };
-  }, [planet, lang]);
+  }, [planet, lang, marked]);
 
   return (
     <S.Card ref={innerRef}>
