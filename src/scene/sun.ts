@@ -30,19 +30,19 @@ const dotTexture = () => radialTexture([
   [0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,240,210,0.7)'], [1, 'rgba(255,240,210,0)'],
 ]);
 
-export interface SunState { exploding: boolean; et: number; flash: number; shake: number; dead: boolean }
+export interface SunState { exploding: boolean; et: number; flash: number; shake: number; dead: boolean; reviving: boolean; rt: number; reborn: boolean }
 
 // Cria a estrela: núcleo de plasma (shader), disco brilhante, coronas/aura e as
 // luzes da cena. Também prepara a supernova (casca + onda de choque + detritos),
 // disparada por detonate(). O update anima pulso normal OU a explosão.
-export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: number, dt: number, ir?: number) => void; detonate: () => void; state: SunState } {
+export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: number, dt: number, ir?: number) => void; detonate: () => void; revive: () => void; state: SunState } {
   // No mobile, esfera menos subdividida + shader liso (sem fbm) p/ o plasma não
   // estourar em GPUs de celular. Desktop segue com a versão procedural completa.
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(10, isMobile ? 32 : 64, isMobile ? 32 : 64),
     new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { uTime: { value: 0 } }, vertexShader: GLOW_VERT,
+      uniforms: { uTime: { value: 0 }, uReborn: { value: 0 } }, vertexShader: GLOW_VERT,
       fragmentShader: isMobile ? GLOW_FRAG_MOBILE : GLOW_FRAG,
     }),
   );
@@ -107,7 +107,10 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   points.visible = false;
   scene.add(points);
 
-  const state: SunState = { exploding: false, et: 0, flash: 0, shake: 0, dead: false };
+  const state: SunState = { exploding: false, et: 0, flash: 0, shake: 0, dead: false, reviving: false, rt: 0, reborn: false };
+  let rebornMix = 0; // 0 = sol dourado original · 1 = supernova azul renascida
+  const glowMat = glow.material as THREE.ShaderMaterial;
+  const REVIVE_DUR = 2.8;
 
   return {
     state,
@@ -116,23 +119,77 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
       state.exploding = true;
       state.et = 0;
     },
+    // Renasce a estrela como supernova azul (enigma dos 5 tons resolvido).
+    revive: () => {
+      if (!state.dead || state.reviving) return;
+      state.reviving = true;
+      state.rt = 0;
+      sun.visible = true;
+      glow.visible = true;
+    },
     update: (t, dt, ir = 0) => {
-      (glow.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+      glowMat.uniforms.uTime.value = t;
+      glowMat.uniforms.uReborn.value = rebornMix;
+
+      // ----- Renascimento (supernova azul): clarão + nebulosa colorida + reacende -----
+      if (state.reviving) {
+        state.rt += dt;
+        const r = state.rt;
+        const grow = smooth(0, 1.6, r);
+        rebornMix = smooth(0, 1.8, r);
+        state.flash = smooth(0, 0.16, r) * (1 - smooth(0.22, 1.3, r)) * 1.6; // clarão azul
+        // núcleo cresce da brasa (0.16) até maior que o original (1.2), esfriando p/ branco-azul
+        sun.visible = true;
+        sun.scale.setScalar(lerp(0.16, 1.2, grow) * (1 + Math.sin(r * 8) * 0.03 * (1 - grow)));
+        sunMat.color.setRGB(lerp(0.35, 0.72, grow), lerp(0.08, 0.86, grow), lerp(0.05, 1.0, grow));
+        sunLight.color.setRGB(lerp(1, 0.66, grow), lerp(0.45, 0.82, grow), lerp(0.32, 1.0, grow));
+        sunLight.intensity = 300 + smooth(0, 0.3, r) * 5200 * (1 - smooth(0.4, 1.6, r)) + grow * 3200;
+        glow.scale.setScalar(lerp(0.2, 1.15, grow));
+        // coronas reaparecem (o brilho azul vem do shader/glow; ficam suaves)
+        corona.material.opacity = grow * 0.5; corona2.material.opacity = grow * 0.4; aura.material.opacity = grow * 0.3;
+        corona.scale.setScalar(SUN_R * 9); corona2.scale.setScalar(SUN_R * 4.5); aura.scale.setScalar(SUN_R * 13);
+        // casca de choque azul-ciano em expansão
+        shell.visible = true;
+        const shR = SUN_R * (0.5 + smooth(0, 1.6, r) * 34);
+        shell.scale.setScalar(shR);
+        shellMat.opacity = smooth(0, 0.12, r) * (1 - smooth(0.3, 1.5, r)) * 0.9;
+        shellMat.color.setRGB(lerp(0.6, 0.2, clamp01(r / 1.5)), lerp(0.9, 0.5, clamp01(r / 1.5)), 1.0);
+        // nebulosa: detritos voltam como faíscas coloridas (ciano/magenta/dourado)
+        points.visible = true;
+        for (let i = 0; i < N; i++) {
+          const d = SUN_R * 0.5 + speeds[i] * r * 0.7;
+          positions[i * 3] = dirs[i * 3] * d; positions[i * 3 + 1] = dirs[i * 3 + 1] * d; positions[i * 3 + 2] = dirs[i * 3 + 2] * d;
+        }
+        ptsGeo.attributes.position.needsUpdate = true;
+        ptsMat.opacity = smooth(0, 0.2, r) * (1 - smooth(1.2, 2.6, r)) * 0.9;
+        ptsMat.color.setRGB(0.4 + 0.4 * Math.sin(r * 3), 0.7, 1.0);
+        state.shake = Math.max(state.flash * 0.8, 0);
+        if (r >= REVIVE_DUR) {
+          state.reviving = false; state.exploding = false; state.dead = false; state.reborn = true;
+          rebornMix = 1; shell.visible = false; ring.visible = false; points.visible = false;
+        }
+        return;
+      }
 
       if (!state.exploding) {
-        sun.scale.setScalar((1 + Math.sin(t * 1.3) * 0.03) * (1 - ir * 0.62));
+        // paleta: dourado (rebornMix 0) -> supernova azul (rebornMix 1)
+        const m = rebornMix;
+        sun.scale.setScalar((1 + Math.sin(t * 1.3) * 0.03) * (1 - ir * 0.62) * (1 + m * 0.15));
         corona.scale.setScalar(SUN_R * 9 * (1 + Math.sin(t * 0.9) * 0.05));
         corona2.scale.setScalar(SUN_R * 4.5 * (1 + Math.sin(t * 1.4) * 0.06));
         aura.scale.setScalar(SUN_R * 13 * (1 + Math.sin(t * 0.5) * 0.08));
-        aura.material.opacity = (0.38 + 0.08 * Math.sin(t * 0.7)) * (1 - ir);
+        aura.material.opacity = (0.38 + 0.08 * Math.sin(t * 0.7)) * (1 - ir) * (1 - m); // halo quente some no renascido
         // modo IR: o núcleo (estrela) apaga e as luzes migram p/ vermelho
-        corona.material.opacity = 1 - ir;
-        corona2.material.opacity = 0.85 * (1 - ir);
-        glow.scale.setScalar(Math.max(0.05, 1 - ir * 0.85));
-        sunMat.color.setRGB(1 - 0.8 * ir, 0.945 - 0.85 * ir, 0.784 - 0.7 * ir);
-        sunLight.color.setRGB(1, 0.30 + 0.66 * (1 - ir), 0.20 + 0.72 * (1 - ir));
-        sunLight.intensity = 2400 * (1 - ir * 0.8);
-        ambient.color.setRGB(0.10 + 0.16 * ir, 0.157 * (1 - ir), 0.212 * (1 - ir));
+        corona.material.opacity = (1 - ir) * (1 - m * 0.8);
+        corona2.material.opacity = 0.85 * (1 - ir) * (1 - m * 0.8);
+        glow.scale.setScalar(Math.max(0.05, 1 - ir * 0.85) * (1 + m * 0.12));
+        sunMat.color.setRGB(
+          lerp(1 - 0.8 * ir, 0.72, m),
+          lerp(0.945 - 0.85 * ir, 0.86, m),
+          lerp(0.784 - 0.7 * ir, 1.0, m));
+        sunLight.color.setRGB(lerp(1, 0.66, m), lerp(0.30 + 0.66 * (1 - ir), 0.82, m), lerp(0.20 + 0.72 * (1 - ir), 1.0, m));
+        sunLight.intensity = 2400 * (1 - ir * 0.8) * (1 + m * 0.5); // renascido brilha mais
+        ambient.color.setRGB(0.10 + 0.16 * ir, 0.157 * (1 - ir) + m * 0.12, 0.212 * (1 - ir) + m * 0.25);
         coolFill.intensity = 0.5 * (1 - ir);
         return;
       }

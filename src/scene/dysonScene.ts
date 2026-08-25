@@ -151,6 +151,10 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // 5 cliques seguidos no núcleo -> supernova
+  // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
+  // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
+  const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
+  let contactProgress = 0, sunDeadFired = false;
   let irStart = -1, irStopAt = -1; // modo infravermelho (véus / linha de Petrova)
   let irLocked = false; // enquanto travado, cliques não encerram o evento — só a música ao acabar
   const ESPECTRO = { drainDepth: 0.85, fade: 2.4, maxHold: 90 }; // drainDepth = profundidade do vale (0.93 ~ preto total); fade = saída suave; maxHold = segurança
@@ -341,6 +345,20 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       const ah = anomalyPick.length ? raycaster.intersectObjects(anomalyPick, false) : [];
       if (ah.length) {
         const key = ah[0].object.userData.anomalyKey as string;
+        // enigma dos 5 tons: só com o sol morto (antes de renascer). Cada egg toca
+        // seu tom; reproduza o sinal do filme (voyager→oumuamua→monolith→ufo→hailmary).
+        if (sun.state.dead && !sun.state.reviving && !sun.state.reborn) {
+          const toneIdx = CONTACT_MAP[key];
+          if (toneIdx === undefined) { opts.onContactWrong?.(); contactProgress = 0; } // decoy -> reinicia
+          else {
+            opts.onContactTone?.(toneIdx);
+            if (toneIdx === contactProgress) {
+              contactProgress++;
+              if (contactProgress >= 5) { contactProgress = 0; sun.revive(); opts.onContactSolved?.(); }
+            } else contactProgress = toneIdx === 0 ? 1 : 0; // fora de ordem -> recomeça (0 já reinicia a frase)
+          }
+          return; // durante o enigma o clique não abre card nem toca o som normal do egg
+        }
         const idx = anomalies.findIndex((a) => a.key === key);
         clearPlanetHover();
         if (anomalyHover !== idx) { anomalyHover = idx; opts.onAnomalyHover?.(key); }
@@ -427,6 +445,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     }
     stars.update(t, ir);
     sun.update(t, dt, ir);
+    if (sun.state.dead && !sunDeadFired) { sunDeadFired = true; opts.onSunDead?.(); } // convite do enigma
     rings.forEach((r) => { ud(r).inner.rotation.y = t * ud(r).speed; });
     dyson.rotation.y = t * 0.02;
     shell.rotation.y = t * 0.015;

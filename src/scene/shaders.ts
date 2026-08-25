@@ -23,7 +23,7 @@ export const GLOW_VERT = `varying vec3 vN; varying vec3 vV; varying vec3 vP;
     vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz);
     vP = normalize(position); gl_Position = projectionMatrix*mv; }`;
 export const GLOW_FRAG = `precision highp float;
-  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime;
+  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime; uniform float uReborn;
   vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
   vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
   vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
@@ -86,6 +86,7 @@ export const GLOW_FRAG = `precision highp float;
     col = mix(col, core, pow(d, 5.0)*(0.55+0.45*plasma));
     float pulse = 1.0 + 0.05*sin(uTime*1.1);
     float a = pow(d, 2.4)*(1.1+0.5*plasma)*pulse;
+    col = mix(col, col.bgr, uReborn); // renascimento: plasma dourado -> azul (supernova)
     gl_FragColor = vec4(col*(1.05+0.55*fil)*pulse, min(a,1.0));
   }`;
 
@@ -94,7 +95,7 @@ export const GLOW_FRAG = `precision highp float;
 // um jato vertical que o bloom amplifica. Aqui é só um fresnel suave e clampado
 // (não pode estourar). Usa os mesmos varyings do GLOW_VERT. Desktop não usa isto.
 export const GLOW_FRAG_MOBILE = `precision highp float;
-  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime;
+  varying vec3 vN; varying vec3 vV; varying vec3 vP; uniform float uTime; uniform float uReborn;
   void main(){
     float d = max(dot(normalize(vN), normalize(vV)), 0.0);
     vec3 amber = vec3(1.0, 0.55, 0.14);
@@ -104,6 +105,7 @@ export const GLOW_FRAG_MOBILE = `precision highp float;
     col = mix(col, core, pow(d, 4.0));
     float pulse = 1.0 + 0.04*sin(uTime*1.1);
     float a = pow(d, 2.6) * 1.0 * pulse;
+    col = mix(col, col.bgr, uReborn); // renascimento: dourado -> azul (supernova)
     gl_FragColor = vec4(clamp(col*pulse, 0.0, 1.6), clamp(a, 0.0, 1.0));
   }`;
 

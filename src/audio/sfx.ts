@@ -104,6 +104,42 @@ function stopUfo(): void {
   ufoMaster = null;
 }
 
+// --- Enigma "Contatos Imediatos" (5 tons sintetizados) ---
+// Sequência do filme (John Williams), graus 2-3-1-1(8vb)-5 em dó maior:
+// Ré – Mi – Dó – Dó(grave) – Sol. Índices 0..4 batem com a ordem do sinal.
+const CONTACT_FREQS = [293.66, 329.63, 261.63, 130.81, 392.0]; // D4 E4 C4 C3 G4
+function contactTone(ac: AudioContext, freq: number, t0: number, dur: number, vol: number): void {
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+  g.connect(ac.destination);
+  const o1 = ac.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
+  const o2 = ac.createOscillator(); o2.type = 'triangle'; o2.frequency.value = freq; o2.detune.value = 5;
+  const o3 = ac.createOscillator(); o3.type = 'sine'; o3.frequency.value = freq * 2; // harmônico brilhante
+  const hg = ac.createGain(); hg.gain.value = 0.22; o3.connect(hg); hg.connect(g);
+  o1.connect(g); o2.connect(g);
+  for (const o of [o1, o2, o3]) { o.start(t0); o.stop(t0 + dur + 0.05); }
+}
+// tom de um easter egg (índice 0..4). Toca o tom correspondente do sinal.
+export function playContactTone(i: number): void {
+  const ac = getCtx(); contactTone(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime, 0.6, 0.28);
+}
+// o "convite" completo — os 5 tons em sequência (dica ao morrer o sol)
+export function playContactMotif(): void {
+  const ac = getCtx(); let t = ac.currentTime + 0.15; const gap = 0.5;
+  for (let i = 0; i < 5; i++) { contactTone(ac, CONTACT_FREQS[i], t, i === 3 ? 0.7 : 0.48, 0.3); t += gap; }
+}
+// clique errado: nota grave curta (reinicia a sequência)
+export function playContactWrong(): void {
+  const ac = getCtx(); contactTone(ac, 98, ac.currentTime, 0.3, 0.16);
+}
+// resolvido: pequeno arpejo ascendente antes do renascimento
+export function playContactSolved(): void {
+  const ac = getCtx(); let t = ac.currentTime; const seq = [261.63, 329.63, 392.0, 523.25, 659.25];
+  for (let i = 0; i < seq.length; i++) { contactTone(ac, seq[i], t, 0.6, 0.26); t += 0.13; }
+}
+
 // --- Eggs com arquivo de áudio (public/sounds/<arquivo>) ---
 const FILES: Record<string, string> = {
   tardis: 'tardis.mp3',

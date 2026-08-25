@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playContactSolved } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -74,6 +74,11 @@ export default function App() {
       },
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
+      // Enigma "Contatos Imediatos" (pós-supernova)
+      onSunDead: () => { window.setTimeout(() => playContactMotif(), 9000); }, // convite após o clipe da explosão
+      onContactTone: (i) => playContactTone(i),
+      onContactWrong: () => playContactWrong(),
+      onContactSolved: () => playContactSolved(),
 
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
