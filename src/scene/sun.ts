@@ -30,6 +30,38 @@ const dotTexture = () => radialTexture([
   [0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,240,210,0.7)'], [1, 'rgba(255,240,210,0)'],
 ]);
 
+// ---- Supernova realista (ejeta com Rayleigh-Taylor + cor por corpo negro) ----
+const SN_NOISE = `
+  float snhash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+  float snvn(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+    return mix(mix(mix(snhash(i+vec3(0,0,0)),snhash(i+vec3(1,0,0)),f.x),mix(snhash(i+vec3(0,1,0)),snhash(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(snhash(i+vec3(0,0,1)),snhash(i+vec3(1,0,1)),f.x),mix(snhash(i+vec3(0,1,1)),snhash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+  float snfbm(vec3 p){ float s=0.0,a=0.5; for(int i=0;i<4;i++){ s+=a*snvn(p); p*=2.0; a*=0.5; } return s; }`;
+// cor a partir da temperatura de corpo negro (aprox. Tanner Helland)
+const SN_BLACKBODY = `
+  vec3 bbody(float k){ k=clamp(k,1000.0,40000.0)/100.0; float r,g,b;
+    if(k<=66.0)r=1.0; else { r=k-60.0; r=1.29293618606*pow(r,-0.1332047592); }
+    if(k<=66.0){ g=k; g=0.39008157876*log(g)-0.63184144378; } else { g=k-60.0; g=1.12989086089*pow(g,-0.0755148492); }
+    if(k>=66.0)b=1.0; else if(k<=19.0)b=0.0; else { b=k-10.0; b=0.54320678911*log(b)-1.19625408914; }
+    return clamp(vec3(r,g,b),0.0,1.0); }`;
+// ejeta: icosaedro deslocado no vertex por fbm 3D -> dedos/nós (Rayleigh-Taylor)
+const EJECTA_VERT = `${SN_NOISE}
+  uniform float uTime; uniform float uAmp; uniform float uScale;
+  varying float vN2; varying vec3 vNorm; varying vec3 vView;
+  void main(){ vec3 dir=normalize(position);
+    float n=snfbm(dir*2.6 + uTime);
+    float disp=1.0 + uAmp*(n-0.42);
+    vec3 pos=dir*uScale*disp; vN2=n;
+    vec4 mv=modelViewMatrix*vec4(pos,1.0); vNorm=normalize(normalMatrix*dir); vView=normalize(-mv.xyz);
+    gl_Position=projectionMatrix*mv; }`;
+const EJECTA_FRAG = `${SN_BLACKBODY}
+  uniform float uTemp; uniform float uOpacity;
+  varying float vN2; varying vec3 vNorm; varying vec3 vView;
+  void main(){ vec3 col=bbody(uTemp);
+    float rim=pow(1.0-max(dot(vNorm,vView),0.0),1.4);
+    float knot=0.35+0.9*vN2;                 // nós/filamentos mais brilhantes
+    gl_FragColor=vec4(col*knot*(0.5+0.9*rim), uOpacity*(0.35+0.65*vN2)); }`;
+
 export interface SunState { exploding: boolean; et: number; flash: number; shake: number; dead: boolean; reviving: boolean; rt: number; reborn: boolean }
 
 // Cria a estrela: núcleo de plasma (shader), disco brilhante, coronas/aura e as
@@ -90,14 +122,22 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   const positions = new Float32Array(N * 3);
   const dirs = new Float32Array(N * 3);
   const speeds = new Float32Array(N);
+  // nós de densidade (32% agrupados) + velocidade radial log-normal (dispersão real)
+  const knots = Array.from({ length: 6 }, () => { const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u); return [r * Math.cos(th), u, r * Math.sin(th)] as [number, number, number]; });
   for (let i = 0; i < N; i++) {
-    const u = Math.random() * 2 - 1;
-    const th = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(1 - u * u);
-    dirs[i * 3] = r * Math.cos(th);
-    dirs[i * 3 + 1] = u;
-    dirs[i * 3 + 2] = r * Math.sin(th);
-    speeds[i] = 22 + Math.random() * 80;
+    let dx: number, dy: number, dz: number;
+    if (Math.random() < 0.32) { // agrupa perto de um nó
+      const k = knots[(Math.random() * knots.length) | 0];
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u) * 0.34;
+      dx = k[0] + r * Math.cos(th); dy = k[1] + u * 0.34; dz = k[2] + r * Math.sin(th);
+      const L = Math.hypot(dx, dy, dz) || 1; dx /= L; dy /= L; dz /= L;
+    } else {
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      dx = r * Math.cos(th); dy = u; dz = r * Math.sin(th);
+    }
+    dirs[i * 3] = dx; dirs[i * 3 + 1] = dy; dirs[i * 3 + 2] = dz;
+    const ln = Math.exp(-0.3 + 0.55 * (Math.random() + Math.random() + Math.random() - 1.5)); // log-normal ~0.4..1.8
+    speeds[i] = 26 + ln * 70;
   }
   const ptsGeo = new THREE.BufferGeometry();
   ptsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -106,6 +146,17 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   const points = new THREE.Points(ptsGeo, ptsMat);
   points.visible = false;
   scene.add(points);
+
+  // Ejeta filamentar: icosaedro deslocado por fbm 3D (instabilidades de Rayleigh-
+  // Taylor -> dedos e nós, não bola lisa). Cor por corpo negro (esfria = avermelha).
+  const ejMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { uTime: { value: 0 }, uAmp: { value: 0.9 }, uScale: { value: 1 }, uTemp: { value: 40000 }, uOpacity: { value: 0 } },
+    vertexShader: EJECTA_VERT, fragmentShader: EJECTA_FRAG,
+  });
+  const ejecta = new THREE.Mesh(new THREE.IcosahedronGeometry(1, isMobile ? 4 : 5), ejMat);
+  ejecta.frustumCulled = false; ejecta.visible = false;
+  scene.add(ejecta);
 
   const state: SunState = { exploding: false, et: 0, flash: 0, shake: 0, dead: false, reviving: false, rt: 0, reborn: false };
   let rebornMix = 0; // 0 = sol dourado original · 1 = supernova azul renascida
@@ -166,7 +217,7 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
         state.shake = Math.max(state.flash * 0.8, 0);
         if (r >= REVIVE_DUR) {
           state.reviving = false; state.exploding = false; state.dead = false; state.reborn = true;
-          rebornMix = 1; shell.visible = false; ring.visible = false; points.visible = false;
+          rebornMix = 1; shell.visible = false; ring.visible = false; points.visible = false; ejecta.visible = false;
         }
         return;
       }
@@ -227,23 +278,34 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
         aura.material.opacity = lerp(0.63, 0, k);
         state.shake = 0.02;
       } else {
-        // detonação + blast
+        // detonação + blast (ejeta realista bicolor: nuvem avermelha + núcleo azul)
         glow.visible = false;
         const e2 = be;
+        const cool = clamp01(e2 / 3.2);
+        const uTemp = Math.exp(lerp(Math.log(40000), Math.log(4000), cool)); // esfria ao expandir
 
-        // casca de choque: infla rápido, passa pela câmera e esmaece logo
+        // ejeta filamentar (Rayleigh-Taylor) — a nuvem que esfria e avermelha
+        ejecta.visible = true;
+        const ejScale = SUN_R * (0.4 + smooth(0, 2.2, e2) * 40); // ~ até 244
+        ejMat.uniforms.uScale.value = ejScale;
+        ejMat.uniforms.uAmp.value = lerp(0.2, 0.95, smooth(0, 2.0, e2)); // dedos crescem
+        ejMat.uniforms.uTime.value = 0.6 + e2 * 1.6;
+        ejMat.uniforms.uTemp.value = uTemp;
+        ejMat.uniforms.uOpacity.value = 0.9 * smooth(0, 0.1, e2) * (1 - 0.96 * smooth(1.4, 3.6, e2));
+
+        // frente de choque: casca fina brilhante, à frente da ejeta (quente = azul)
         shell.visible = true;
-        const shellR = SUN_R * (0.4 + smooth(0, 1.9, e2) * 42); // ~ até 254
-        shell.scale.setScalar(shellR);
-        shellMat.opacity = smooth(0, 0.08, e2) * (1 - smooth(0.25, 1.7, e2)) * 0.95;
-        shellMat.color.setRGB(1, lerp(1, 0.25, clamp01(e2 / 1.4)), lerp(0.92, 0.08, clamp01(e2 / 1.1)));
+        shell.scale.setScalar(ejScale * 1.15);
+        shellMat.opacity = smooth(0, 0.08, e2) * (1 - smooth(0.3, 1.8, e2)) * 0.8;
+        shellMat.color.setRGB(0.7, 0.85, 1.0);
 
         // onda de choque (anel no plano)
         ring.visible = true;
-        ring.scale.setScalar(shellR * 1.15);
-        ringMat.opacity = smooth(0, 0.12, e2) * (1 - smooth(0.4, 2.0, e2)) * 0.85;
+        ring.scale.setScalar(ejScale * 1.2);
+        ringMat.opacity = smooth(0, 0.12, e2) * (1 - smooth(0.4, 2.2, e2)) * 0.7;
+        ringMat.color.setRGB(0.7, 0.82, 1.0);
 
-        // detritos ejetados, esfriando (branco -> laranja -> vermelho)
+        // faíscas de ejeta (log-normal), esfriando junto (branco -> laranja)
         points.visible = true;
         for (let i = 0; i < N; i++) {
           const d = SUN_R * 0.5 + speeds[i] * e2;
@@ -252,20 +314,21 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
           positions[i * 3 + 2] = dirs[i * 3 + 2] * d;
         }
         ptsGeo.attributes.position.needsUpdate = true;
-        ptsMat.opacity = 1 - smooth(1.4, 3.2, e2);
-        ptsMat.color.setRGB(1, lerp(1, 0.3, clamp01(e2 / 1.5)), lerp(0.85, 0.1, clamp01(e2 / 1.2)));
+        ptsMat.opacity = (1 - 0.9 * smooth(1.4, 3.6, e2)) * 0.9;
+        ptsMat.color.setRGB(1, lerp(1, 0.35, cool), lerp(0.9, 0.12, cool));
 
-        // luz: clarão imenso -> morre; sobra uma brasa avermelhada (remanescente)
-        if (e2 < 2) {
+        // núcleo exposto: some no clarão e reacende como ponto AZUL-BRANCO pálido
+        // (não LED — o brilho vende a temperatura). Vira a semente do gigante azul.
+        if (e2 < 0.9) {
           sun.visible = false;
-          sunLight.intensity = 300 + state.flash * 42000 + Math.max(0, 1 - smooth(0.2, 1.8, e2)) * 3000;
+          sunLight.intensity = 300 + state.flash * 42000 + Math.max(0, 1 - smooth(0.1, 1.0, e2)) * 3000;
         } else {
-          const rk = smooth(2, 3.2, e2);
+          const k = smooth(0.9, 2.2, e2);
           sun.visible = true;
           sun.scale.setScalar(0.16);
-          sunMat.color.setRGB(0.3, 0.06, 0.04); // brasa vermelha
-          sunLight.color.setRGB(1, 0.45, 0.32);
-          sunLight.intensity = lerp(300, 45, rk);
+          sunMat.color.setRGB(0.62, 0.78, 1.0); // #9EC7FF núcleo exposto
+          sunLight.color.setRGB(0.7, 0.82, 1.0);
+          sunLight.intensity = lerp(300, 120, k);
         }
 
         state.shake = Math.max(state.flash, 0.3 * (1 - smooth(0, 1.0, e2)));
