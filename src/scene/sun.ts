@@ -161,7 +161,7 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   const state: SunState = { exploding: false, et: 0, flash: 0, shake: 0, dead: false, reviving: false, rt: 0, reborn: false };
   let rebornMix = 0; // 0 = sol dourado original · 1 = supernova azul renascida
   const glowMat = glow.material as THREE.ShaderMaterial;
-  const REVIVE_DUR = 2.8;
+  const REVIVE_DUR = 3.2;
 
   return {
     state,
@@ -182,38 +182,51 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
       glowMat.uniforms.uTime.value = t;
       glowMat.uniforms.uReborn.value = rebornMix;
 
-      // ----- Renascimento (supernova azul): clarão + nebulosa colorida + reacende -----
+      // ===== SEGUNDA explosão: a SUPERNOVA (após o enigma) -> gigante azul =====
+      // Diferente da 1ª (explosão do sol): aqui a ejeta é azul-branca (quente) e
+      // no fim sobra a gigante azul, não uma brasa morta.
       if (state.reviving) {
         state.rt += dt;
         const r = state.rt;
-        const grow = smooth(0, 1.6, r);
-        rebornMix = smooth(0, 1.8, r);
-        state.flash = smooth(0, 0.16, r) * (1 - smooth(0.22, 1.3, r)) * 1.6; // clarão azul
-        // núcleo cresce da brasa (0.16) até maior que o original (1.2), esfriando p/ branco-azul
-        sun.visible = true;
-        sun.scale.setScalar(lerp(0.16, 1.2, grow) * (1 + Math.sin(r * 8) * 0.03 * (1 - grow)));
-        sunMat.color.setRGB(lerp(0.35, 0.72, grow), lerp(0.08, 0.86, grow), lerp(0.05, 1.0, grow));
-        sunLight.color.setRGB(lerp(1, 0.66, grow), lerp(0.45, 0.82, grow), lerp(0.32, 1.0, grow));
-        sunLight.intensity = 300 + smooth(0, 0.3, r) * 5200 * (1 - smooth(0.4, 1.6, r)) + grow * 3200;
-        glow.scale.setScalar(lerp(0.2, 1.15, grow));
-        // coronas reaparecem (o brilho azul vem do shader/glow; ficam suaves)
-        corona.material.opacity = grow * 0.5; corona2.material.opacity = grow * 0.4; aura.material.opacity = grow * 0.3;
-        corona.scale.setScalar(SUN_R * 9); corona2.scale.setScalar(SUN_R * 4.5); aura.scale.setScalar(SUN_R * 13);
-        // casca de choque azul-ciano em expansão
+        const blast = smooth(0, 1.9, r);   // expansão da nuvem da supernova
+        const grow = smooth(1.3, 2.9, r);  // depois, a estrela cresce até gigante azul
+        rebornMix = smooth(0.4, 1.6, r);   // glow migra p/ azul (via bgr)
+        state.flash = smooth(0, 0.14, r) * (1 - smooth(0.2, 1.1, r)) * 1.9; // clarão azul forte
+
+        // ejeta RT azul-branca (a nuvem da supernova) — padrão diferente da 1ª
+        ejecta.visible = true;
+        const ejS = SUN_R * (0.4 + blast * 34);
+        ejMat.uniforms.uScale.value = ejS;
+        ejMat.uniforms.uAmp.value = lerp(0.2, 0.9, blast);
+        ejMat.uniforms.uTime.value = 100.0 + r * 1.6;
+        ejMat.uniforms.uTemp.value = 24000; // azul-branco (supernova quente)
+        ejMat.uniforms.uOpacity.value = 0.9 * smooth(0, 0.12, r) * (1 - smooth(1.5, 2.9, r));
+
+        // frente de choque azul
         shell.visible = true;
-        const shR = SUN_R * (0.5 + smooth(0, 1.6, r) * 34);
-        shell.scale.setScalar(shR);
-        shellMat.opacity = smooth(0, 0.12, r) * (1 - smooth(0.3, 1.5, r)) * 0.9;
-        shellMat.color.setRGB(lerp(0.6, 0.2, clamp01(r / 1.5)), lerp(0.9, 0.5, clamp01(r / 1.5)), 1.0);
-        // nebulosa: detritos voltam como faíscas coloridas (ciano/magenta/dourado)
+        shell.scale.setScalar(ejS * 1.15);
+        shellMat.opacity = smooth(0, 0.1, r) * (1 - smooth(0.35, 1.9, r)) * 0.8;
+        shellMat.color.setRGB(0.72, 0.85, 1.0);
+
+        // faíscas azuis
         points.visible = true;
         for (let i = 0; i < N; i++) {
-          const d = SUN_R * 0.5 + speeds[i] * r * 0.7;
+          const d = SUN_R * 0.5 + speeds[i] * r * 0.8;
           positions[i * 3] = dirs[i * 3] * d; positions[i * 3 + 1] = dirs[i * 3 + 1] * d; positions[i * 3 + 2] = dirs[i * 3 + 2] * d;
         }
         ptsGeo.attributes.position.needsUpdate = true;
-        ptsMat.opacity = smooth(0, 0.2, r) * (1 - smooth(1.2, 2.6, r)) * 0.9;
-        ptsMat.color.setRGB(0.4 + 0.4 * Math.sin(r * 3), 0.7, 1.0);
+        ptsMat.opacity = smooth(0, 0.14, r) * (1 - smooth(1.4, 2.9, r)) * 0.9;
+        ptsMat.color.setRGB(0.72, 0.85, 1.0);
+
+        // estrela reacende e cresce como GIGANTE AZUL (fica no fim)
+        sun.visible = true;
+        sun.scale.setScalar(lerp(0.13, 1.4, grow) * (1 + Math.sin(r * 8) * 0.03 * (1 - grow)));
+        sunMat.color.setRGB(0.62, 0.78, 1.0);
+        sunLight.color.setRGB(0.7, 0.82, 1.0);
+        sunLight.intensity = 140 + smooth(0, 0.2, r) * 5200 * (1 - smooth(0.4, 1.6, r)) + grow * 2600;
+        glow.visible = grow > 0.02;
+        glow.scale.setScalar(lerp(0.25, 1.2, grow));
+
         state.shake = Math.max(state.flash * 0.8, 0);
         if (r >= REVIVE_DUR) {
           state.reviving = false; state.exploding = false; state.dead = false; state.reborn = true;
@@ -322,23 +335,20 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
         ptsMat.opacity = ptOp;
         ptsMat.color.setRGB(1, lerp(1, 0.35, cool), lerp(0.9, 0.12, cool));
 
-        // núcleo exposto some no clarão, reacende azul-branco pálido e, depois da
-        // nuvem dispersar, CRESCE sozinho até uma GIGANTE AZUL (fim do arco).
+        // núcleo colapsado: some no clarão e sobra uma brasa apagada. O sistema
+        // fica MORTO; a estrela só volta (gigante azul) via revive() do enigma.
         if (e2 < 0.9) {
           sun.visible = false;
           glow.visible = false;
           sunLight.intensity = 300 + state.flash * 42000 + Math.max(0, 1 - smooth(0.1, 1.0, e2)) * 3000;
         } else {
-          rebornMix = smooth(0.9, 2.5, e2);        // paleta migra p/ azul (glow via bgr)
-          const grow = smooth(3.4, 7.2, e2);       // incha até gigante azul após dispersar
+          const k = smooth(0.9, 2.4, e2);
           sun.visible = true;
-          sun.scale.setScalar(lerp(0.16, 1.4, grow) * (1 + Math.sin(e2 * 1.3) * 0.02 * grow));
-          sunMat.color.setRGB(0.62, 0.78, 1.0);    // #9EC7FF azul-branco pálido (não LED)
-          sunLight.color.setRGB(0.7, 0.82, 1.0);
-          sunLight.intensity = lerp(140, 2600, grow);
-          glow.visible = grow > 0.02;
-          glow.scale.setScalar(lerp(0.25, 1.2, grow));
-          if (grow >= 0.999 && !state.reborn) state.reborn = true; // gigante azul formada
+          glow.visible = false;
+          sun.scale.setScalar(0.13);
+          sunMat.color.setRGB(0.5, 0.17, 0.12);    // brasa fria (remanescente morto)
+          sunLight.color.setRGB(0.8, 0.55, 0.5);
+          sunLight.intensity = lerp(300, 55, k);    // sistema quase escuro (sobreviventes se acendem)
         }
 
         state.shake = Math.max(state.flash, 0.3 * (1 - smooth(0, 1.0, e2)));

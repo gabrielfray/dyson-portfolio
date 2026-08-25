@@ -25,8 +25,9 @@ export interface PlanetRt {
 // Cauda cometária: cone aditivo que flui radialmente p/ longe da estrela (origem).
 // Estreito e brilhante no planeta, alargando e esmaecendo p/ fora.
 const TAIL_VERT = `varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+// fade forte (^3) concentrado no planeta -> vira um sopro difuso, não um feixe
 const TAIL_FRAG = `uniform float uOpacity; uniform vec3 uColor; varying float vY;
-  void main(){ float a = vY * vY; gl_FragColor = vec4(uColor, a * uOpacity); }`;
+  void main(){ float a = pow(vY, 3.0); gl_FragColor = vec4(uColor, a * uOpacity); }`;
 
 interface PlanetFx {
   group: THREE.Group;
@@ -319,13 +320,13 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     // cauda cometária p/ os sobreviventes que são castigados (4 gigantes). Fica
     // no pivot (não gira com o corpo) apontando +X = radialmente p/ longe da estrela.
     if (['jupiter', 'saturno', 'urano', 'netuno'].includes(p.key)) {
-      const h = size * 12;
+      const h = size * 14;
       const tailMat = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(0.6, 0.75, 1.0) } },
+        uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(1.0, 0.55, 0.35) } }, // gás quente arrancado
         vertexShader: TAIL_VERT, fragmentShader: TAIL_FRAG,
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       });
-      const t = new THREE.Mesh(new THREE.ConeGeometry(size * 1.6, h, 20, 1, true), tailMat);
+      const t = new THREE.Mesh(new THREE.ConeGeometry(size * 1.1, h, 24, 1, true), tailMat);
       t.rotation.z = Math.PI / 2;   // ápice (estreito/brilhante) no planeta, base p/ fora
       t.position.x = r + h / 2;      // base alarga p/ longe da origem
       t.visible = false;
@@ -354,7 +355,7 @@ export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: numb
     // sobreviventes no pós-supernova: autoluminosos, anéis somem, cauda cometária
     (p.body.material as THREE.ShaderMaterial).uniforms.uAfter.value = after;
     if (p.ring) p.ring.visible = after < 0.5; // anéis de gelo sublimam
-    if (p.tail) { p.tail.visible = after > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = after * 0.6; }
+    if (p.tail) { p.tail.visible = after > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = after * 0.28; }
     if (i !== planetHover) p.angle += p.omega * dt;
     p.pivot.rotation.y = p.angle;
     p.body.rotation.y += p.spin * dt;

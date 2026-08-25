@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactWrong, playSupernovaBirth } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -87,7 +87,7 @@ export default function App() {
       },
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
-      onSunDead: () => setSunDead(true),             // núcleo colapsou -> rescaldo + terminal
+      onSunDead: () => { setSunDead(true); window.setTimeout(() => playContactMotif(), 9000); }, // rescaldo + convite (dica do enigma) após o áudio da explosão
       onReborn: () => playSupernovaBirth(),          // gigante azul se forma -> som do renascimento
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),

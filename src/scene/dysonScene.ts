@@ -158,7 +158,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // cliques seguidos no núcleo -> supernova
   const CORE_CLICKS_TO_DETONATE = 5; // TESTE: reduzido de 100 p/ 5 (voltar p/ 100 em produção)
-  const TEST_SKIP_PUZZLE = true; // TESTE: qualquer anomalia (sol morto) já renasce (voltar p/ false em produção)
+  const TEST_SKIP_PUZZLE = false; // o enigma dos 5 tons é que ativa a supernova (revive)
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
@@ -469,7 +469,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       const on = vap < 0.995; dyson.visible = on; shell.visible = on; rings.forEach((r) => { r.visible = on; });
     }
     // pós-supernova: destruição por radiação + sobreviventes marcados (autoluminosos)
-    const after = sun.state.dead ? smoothstep(SN_BLAST_AT + 2, SN_BLAST_AT + 6, sun.state.et) : 0;
+    const after = (sun.state.dead || sun.state.reborn) ? smoothstep(SN_BLAST_AT + 2, SN_BLAST_AT + 6, sun.state.et) : 0;
     const blastT = sun.state.exploding && sun.state.et > SN_BLAST_AT ? sun.state.et - SN_BLAST_AT : -1;
     updatePlanets(planets, dt, planetHover, blastT, ir, after);
     updateAnomalies(t, userZoom, ir);
