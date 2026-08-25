@@ -104,39 +104,74 @@ function stopUfo(): void {
   ufoMaster = null;
 }
 
-// --- Enigma "Contatos Imediatos" (5 tons sintetizados) ---
-// Reproduz o sinal na tonalidade do filme (John Williams): Sol – Lá – Fá –
-// Fá(oitava abaixo) – Dó (G4 A4 F4 F3 C4), graus 2-3-1-1(8vb)-5 em fá maior.
-// Índices 0..4 batem com a ordem do sinal (e com o mapa de eggs do enigma).
-const CONTACT_FREQS = [392.0, 440.0, 349.23, 174.61, 261.63]; // G4 A4 F4 F3 C4
-// timbre próximo do sintetizador do filme (ARP): fundamental + oitava + quinta,
-// com um corpo em triângulo e ataque/decay suaves.
-function contactTone(ac: AudioContext, freq: number, t0: number, dur: number, vol: number): void {
-  const g = ac.createGain();
-  g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(vol, t0 + 0.04);          // ataque suave
-  g.gain.setValueAtTime(vol, t0 + Math.min(0.14, dur * 0.35));
-  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);   // decay
-  g.connect(ac.destination);
-  const parts: [OscillatorType, number, number, number][] = [
-    ['sine', freq, 1.0, 0],
-    ['triangle', freq, 0.32, 4],   // corpo
-    ['sine', freq * 2, 0.28, 0],   // oitava (brilho)
-    ['sine', freq * 1.5, 0.16, 0], // quinta (cor de sintetizador)
-  ];
-  for (const [type, f, amp, det] of parts) {
-    const o = ac.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det;
-    const og = ac.createGain(); og.gain.value = amp;
-    o.connect(og); og.connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
+// --- Enigma "Contatos Imediatos" — síntese subtrativa fiel (5 tons) ---
+// Intervalos em semitons a partir da 1ª nota: 0 +2 -2 -14 -7 (graus 2-3-1-1(8vb)-5).
+// Raiz em fá maior = 392.0 (Sol/G4) -> Sol Lá Fá Fá(8vb) Dó.
+const CONTACT_ROOT = 392.0;
+const CONTACT_SEMI = [0, 2, -2, -14, -7];
+const CONTACT_FREQS = CONTACT_SEMI.map((s) => CONTACT_ROOT * Math.pow(2, s / 12));
+const CONTACT_BRIGHT = 2600; // Hz — brilho do passa-baixas
+const CONTACT_STEP = 0.56;   // s por nota (andamento)
+const CONTACT_REV = 0.62;    // reverberação (0..1)
+
+// reverb por convolução (cauda de ruído com decaimento exponencial) + mix
+// molhado/seco. Criado uma vez, reaproveitado. É o que dá o "espaço" do sinal.
+let contactBus: { seco: GainNode; molhado: GainNode } | null = null;
+function getContactBus(ac: AudioContext): { seco: GainNode; molhado: GainNode } {
+  if (contactBus) return contactBus;
+  const out = ac.createGain(); out.gain.value = 0.85; out.connect(ac.destination);
+  const dur = 3.4, rate = ac.sampleRate;
+  const ir = ac.createBuffer(2, Math.floor(rate * dur), rate);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    for (let i = 0; i < d.length; i++) { const t = i / d.length; d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.6) * (1 - t * 0.15); }
   }
+  const conv = ac.createConvolver(); conv.buffer = ir;
+  const molhado = ac.createGain(); molhado.gain.value = CONTACT_REV * 0.9; molhado.connect(conv); conv.connect(out);
+  const seco = ac.createGain(); seco.gain.value = 1 - CONTACT_REV * 0.45; seco.connect(out);
+  contactBus = { seco, molhado };
+  return contactBus;
 }
+
+// uma nota = 3 osciladores desafinados (dente de serra + quadrada + senoide grave)
+// -> passa-baixas com envelope próprio -> envelope de amplitude, com vibrato leve.
+// (porta fiel do sintetizador de referência.)
+function contactNote(ac: AudioContext, freq: number, when: number, dur: number, bright: number): void {
+  const { seco, molhado } = getContactBus(ac);
+  const g = ac.createGain();
+  const filt = ac.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 1.6;
+  filt.frequency.setValueAtTime(bright * 0.35, when);
+  filt.frequency.linearRampToValueAtTime(bright, when + 0.09);
+  filt.frequency.exponentialRampToValueAtTime(Math.max(180, bright * 0.28), when + dur);
+  const layers: [OscillatorType, number, number, number][] = [
+    ['sawtooth', 1, -5, 0.42],
+    ['square', 1, 6, 0.18],
+    ['sine', 0.5, 0, 0.34], // sub, dá peso
+  ];
+  const oscs: OscillatorNode[] = [];
+  for (const [type, mult, det, vol] of layers) {
+    const o = ac.createOscillator(); o.type = type; o.frequency.value = freq * mult; o.detune.value = det;
+    const gv = ac.createGain(); gv.gain.value = vol; o.connect(gv); gv.connect(filt); oscs.push(o);
+  }
+  const lfo = ac.createOscillator(), lfoG = ac.createGain(); // vibrato leve
+  lfo.frequency.value = 4.7; lfoG.gain.value = freq * 0.0042; lfo.connect(lfoG);
+  for (const o of oscs) lfoG.connect(o.frequency);
+  filt.connect(g); g.connect(seco); g.connect(molhado);
+  const a = 0.045, r = Math.min(0.5, dur * 0.55); // ataque suave evita o clique
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(0.55, when + a);
+  g.gain.setValueAtTime(0.55, when + dur - r);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur + r);
+  for (const o of [...oscs, lfo]) { o.start(when); o.stop(when + dur + r + 0.1); }
+}
+
 // tom de um easter egg (índice 0..4). Toca o tom correspondente do sinal.
 export function playContactTone(i: number): void {
-  const ac = getCtx(); contactTone(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime, 0.62, 0.3);
+  const ac = getCtx(); contactNote(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime + 0.02, CONTACT_STEP * 0.86, CONTACT_BRIGHT);
 }
 // clique errado: nota grave curta (reinicia a sequência)
 export function playContactWrong(): void {
-  const ac = getCtx(); contactTone(ac, 110, ac.currentTime, 0.3, 0.16);
+  const ac = getCtx(); contactNote(ac, 110, ac.currentTime + 0.02, 0.3, 1200);
 }
 
 // Sons "cinemáticos" de arquivo tocados em elementos próprios: tocam inteiros,
@@ -148,14 +183,11 @@ function playOneShot(name: string, vol: number): void {
   a.volume = vol; a.currentTime = 0;
   void a.play().catch(() => { /* sem gesto/arquivo ausente: ignora */ });
 }
-// o "convite": os 5 tons na tonalidade do filme, com o ritmo característico
-// (três rápidas, a 4ª grave segurada, pausa e a última). Sintetizado -> idêntico
-// ao que os eggs tocam, facilitando reproduzir de ouvido.
+// o "convite": os 5 tons em sequência; a última é sustentada (dur = passo*2.6),
+// é ela que deixa a frase em aberto. Mesmo timbre dos eggs (reproduzir de ouvido).
 export function playContactMotif(): void {
-  const ac = getCtx(); const t0 = ac.currentTime + 0.15;
-  const times = [0, 0.5, 1.0, 1.55, 2.5];
-  const durs = [0.5, 0.5, 0.55, 0.85, 1.15];
-  for (let i = 0; i < 5; i++) contactTone(ac, CONTACT_FREQS[i], t0 + times[i], durs[i], 0.32);
+  const ac = getCtx(); const t0 = ac.currentTime + 0.1; const passo = CONTACT_STEP;
+  CONTACT_FREQS.forEach((f, i) => contactNote(ac, f, t0 + i * passo, i === 4 ? passo * 2.6 : passo * 0.86, CONTACT_BRIGHT));
 }
 // renascimento: explosão da supernova (Crab, gravação real), junto com o clarão azul
 export function playSupernovaBirth(): void { playOneShot('supernova-birth.mp3', 0.5); }
