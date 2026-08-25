@@ -105,66 +105,60 @@ function stopUfo(): void {
 }
 
 // --- Enigma "Contatos Imediatos" (5 tons sintetizados) ---
-// Sequência do filme (John Williams), graus 2-3-1-1(8vb)-5 em dó maior:
-// Ré – Mi – Dó – Dó(grave) – Sol. Índices 0..4 batem com a ordem do sinal.
-const CONTACT_FREQS = [293.66, 329.63, 261.63, 130.81, 392.0]; // D4 E4 C4 C3 G4
+// Reproduz o sinal na tonalidade do filme (John Williams): Sol – Lá – Fá –
+// Fá(oitava abaixo) – Dó (G4 A4 F4 F3 C4), graus 2-3-1-1(8vb)-5 em fá maior.
+// Índices 0..4 batem com a ordem do sinal (e com o mapa de eggs do enigma).
+const CONTACT_FREQS = [392.0, 440.0, 349.23, 174.61, 261.63]; // G4 A4 F4 F3 C4
+// timbre próximo do sintetizador do filme (ARP): fundamental + oitava + quinta,
+// com um corpo em triângulo e ataque/decay suaves.
 function contactTone(ac: AudioContext, freq: number, t0: number, dur: number, vol: number): void {
   const g = ac.createGain();
   g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(vol, t0 + 0.03);
-  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.04);          // ataque suave
+  g.gain.setValueAtTime(vol, t0 + Math.min(0.14, dur * 0.35));
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);   // decay
   g.connect(ac.destination);
-  const o1 = ac.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
-  const o2 = ac.createOscillator(); o2.type = 'triangle'; o2.frequency.value = freq; o2.detune.value = 5;
-  const o3 = ac.createOscillator(); o3.type = 'sine'; o3.frequency.value = freq * 2; // harmônico brilhante
-  const hg = ac.createGain(); hg.gain.value = 0.22; o3.connect(hg); hg.connect(g);
-  o1.connect(g); o2.connect(g);
-  for (const o of [o1, o2, o3]) { o.start(t0); o.stop(t0 + dur + 0.05); }
+  const parts: [OscillatorType, number, number, number][] = [
+    ['sine', freq, 1.0, 0],
+    ['triangle', freq, 0.32, 4],   // corpo
+    ['sine', freq * 2, 0.28, 0],   // oitava (brilho)
+    ['sine', freq * 1.5, 0.16, 0], // quinta (cor de sintetizador)
+  ];
+  for (const [type, f, amp, det] of parts) {
+    const o = ac.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det;
+    const og = ac.createGain(); og.gain.value = amp;
+    o.connect(og); og.connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
 }
 // tom de um easter egg (índice 0..4). Toca o tom correspondente do sinal.
 export function playContactTone(i: number): void {
-  const ac = getCtx(); contactTone(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime, 0.6, 0.28);
-}
-// o "convite" completo — os 5 tons em sequência (dica ao morrer o sol)
-export function playContactMotif(): void {
-  const ac = getCtx(); let t = ac.currentTime + 0.15; const gap = 0.5;
-  for (let i = 0; i < 5; i++) { contactTone(ac, CONTACT_FREQS[i], t, i === 3 ? 0.7 : 0.48, 0.3); t += gap; }
+  const ac = getCtx(); contactTone(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime, 0.62, 0.3);
 }
 // clique errado: nota grave curta (reinicia a sequência)
 export function playContactWrong(): void {
-  const ac = getCtx(); contactTone(ac, 98, ac.currentTime, 0.3, 0.16);
+  const ac = getCtx(); contactTone(ac, 110, ac.currentTime, 0.3, 0.16);
 }
-// renascimento: swell cósmico luminoso (acorde maior ascendente + shimmer agudo
-// + impacto grave), sincronizado com o clarão azul da supernova renascendo.
-export function playSupernovaBirth(): void {
-  const ac = getCtx(); const t0 = ac.currentTime;
-  const master = ac.createGain();
-  master.gain.setValueAtTime(0, t0);
-  master.gain.linearRampToValueAtTime(0.34, t0 + 0.5);
-  master.gain.exponentialRampToValueAtTime(0.0008, t0 + 3.4);
-  master.connect(ac.destination);
-  // acorde maior que sobe uma oitava em ~0.6s (a estrela "acendendo")
-  for (const f of [261.63, 329.63, 392.0, 523.25, 659.25]) {
-    const o = ac.createOscillator(); o.type = 'triangle';
-    o.frequency.setValueAtTime(f * 0.5, t0);
-    o.frequency.exponentialRampToValueAtTime(f, t0 + 0.6);
-    const g = ac.createGain(); g.gain.value = 0.15;
-    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 3.5);
-  }
-  // shimmer agudo que floresce junto com o clarão
-  for (const f of [1046.5, 1318.5, 1568.0]) {
-    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.07, t0 + 0.4); g.gain.exponentialRampToValueAtTime(0.0006, t0 + 2.4);
-    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 2.5);
-  }
-  // impacto grave (whoosh) no instante do estouro azul
-  const sub = ac.createOscillator(); sub.type = 'sine';
-  sub.frequency.setValueAtTime(120, t0); sub.frequency.exponentialRampToValueAtTime(52, t0 + 0.9);
-  const sg = ac.createGain();
-  sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.26, t0 + 0.18); sg.gain.exponentialRampToValueAtTime(0.0006, t0 + 1.5);
-  sub.connect(sg); sg.connect(master); sub.start(t0); sub.stop(t0 + 1.6);
+
+// Sons "cinemáticos" de arquivo tocados em elementos próprios: tocam inteiros,
+// nunca são cortados por cliques (ao contrário dos eggs, que passam por stopAllSfx).
+const oneShots: Record<string, HTMLAudioElement> = {};
+function playOneShot(name: string, vol: number): void {
+  let a = oneShots[name];
+  if (!a) { a = new Audio(import.meta.env.BASE_URL + 'sounds/' + name); a.preload = 'auto'; oneShots[name] = a; }
+  a.volume = vol; a.currentTime = 0;
+  void a.play().catch(() => { /* sem gesto/arquivo ausente: ignora */ });
 }
+// o "convite": os 5 tons na tonalidade do filme, com o ritmo característico
+// (três rápidas, a 4ª grave segurada, pausa e a última). Sintetizado -> idêntico
+// ao que os eggs tocam, facilitando reproduzir de ouvido.
+export function playContactMotif(): void {
+  const ac = getCtx(); const t0 = ac.currentTime + 0.15;
+  const times = [0, 0.5, 1.0, 1.55, 2.5];
+  const durs = [0.5, 0.5, 0.55, 0.85, 1.15];
+  for (let i = 0; i < 5; i++) contactTone(ac, CONTACT_FREQS[i], t0 + times[i], durs[i], 0.32);
+}
+// renascimento: explosão da supernova (Crab, gravação real), junto com o clarão azul
+export function playSupernovaBirth(): void { playOneShot('supernova-birth.mp3', 0.5); }
 
 // --- Eggs com arquivo de áudio (public/sounds/<arquivo>) ---
 const FILES: Record<string, string> = {

@@ -152,6 +152,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // cliques seguidos no núcleo -> supernova
   const CORE_CLICKS_TO_DETONATE = 5; // TESTE: reduzido de 100 p/ 5 (voltar p/ 100 em produção)
+  const TEST_SKIP_PUZZLE = true; // TESTE: qualquer anomalia (sol morto) já renasce (voltar p/ false em produção)
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
@@ -352,6 +353,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         // enigma dos 5 tons: só com o sol morto (antes de renascer). Cada egg toca
         // seu tom; reproduza o sinal do filme (voyager→oumuamua→monolith→ufo→hailmary).
         if (sun.state.dead && !sun.state.reviving && !sun.state.reborn) {
+          if (TEST_SKIP_PUZZLE) { contactProgress = 0; sun.revive(); opts.onContactSolved?.(); return; } // atalho de teste
           const toneIdx = CONTACT_MAP[key];
           if (toneIdx === undefined) { opts.onContactWrong?.(); contactProgress = 0; } // decoy -> reinicia
           else {
