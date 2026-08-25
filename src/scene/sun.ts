@@ -284,29 +284,34 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
         const cool = clamp01(e2 / 3.2);
         const uTemp = Math.exp(lerp(Math.log(40000), Math.log(4000), cool)); // esfria ao expandir
 
-        // ejeta filamentar (Rayleigh-Taylor) — a nuvem que esfria e avermelha
-        ejecta.visible = true;
+        // ejeta filamentar (Rayleigh-Taylor) — a nuvem que esfria e avermelha,
+        // e DISPERSA por completo no fim (não deixa gaiola de icosaedro na tela)
         const ejScale = SUN_R * (0.4 + smooth(0, 2.2, e2) * 40); // ~ até 244
+        const ejOp = 0.9 * smooth(0, 0.1, e2) * (1 - smooth(1.3, 3.6, e2)); // -> 0 em e2=3.6
+        ejecta.visible = ejOp > 0.003;
         ejMat.uniforms.uScale.value = ejScale;
         ejMat.uniforms.uAmp.value = lerp(0.2, 0.95, smooth(0, 2.0, e2)); // dedos crescem
         ejMat.uniforms.uTime.value = 0.6 + e2 * 1.6;
         ejMat.uniforms.uTemp.value = uTemp;
-        ejMat.uniforms.uOpacity.value = 0.9 * smooth(0, 0.1, e2) * (1 - 0.96 * smooth(1.4, 3.6, e2));
+        ejMat.uniforms.uOpacity.value = ejOp;
 
         // frente de choque: casca fina brilhante, à frente da ejeta (quente = azul)
-        shell.visible = true;
+        const shOp = smooth(0, 0.08, e2) * (1 - smooth(0.3, 1.8, e2)) * 0.8;
+        shell.visible = shOp > 0.003;
         shell.scale.setScalar(ejScale * 1.15);
-        shellMat.opacity = smooth(0, 0.08, e2) * (1 - smooth(0.3, 1.8, e2)) * 0.8;
+        shellMat.opacity = shOp;
         shellMat.color.setRGB(0.7, 0.85, 1.0);
 
         // onda de choque (anel no plano)
-        ring.visible = true;
+        const rgOp = smooth(0, 0.12, e2) * (1 - smooth(0.4, 2.2, e2)) * 0.7;
+        ring.visible = rgOp > 0.003;
         ring.scale.setScalar(ejScale * 1.2);
-        ringMat.opacity = smooth(0, 0.12, e2) * (1 - smooth(0.4, 2.2, e2)) * 0.7;
+        ringMat.opacity = rgOp;
         ringMat.color.setRGB(0.7, 0.82, 1.0);
 
         // faíscas de ejeta (log-normal), esfriando junto (branco -> laranja)
-        points.visible = true;
+        const ptOp = (1 - smooth(1.3, 3.6, e2)) * 0.9; // some junto com a nuvem
+        points.visible = ptOp > 0.003;
         for (let i = 0; i < N; i++) {
           const d = SUN_R * 0.5 + speeds[i] * e2;
           positions[i * 3] = dirs[i * 3] * d;
@@ -314,7 +319,7 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
           positions[i * 3 + 2] = dirs[i * 3 + 2] * d;
         }
         ptsGeo.attributes.position.needsUpdate = true;
-        ptsMat.opacity = (1 - 0.9 * smooth(1.4, 3.6, e2)) * 0.9;
+        ptsMat.opacity = ptOp;
         ptsMat.color.setRGB(1, lerp(1, 0.35, cool), lerp(0.9, 0.12, cool));
 
         // núcleo exposto: some no clarão e reacende como ponto AZUL-BRANCO pálido

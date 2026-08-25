@@ -304,8 +304,12 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const pivot = new THREE.Group(); // gira em Y -> órbita circular no plano XZ (eclíptica)
     pivot.add(body);
     solar.add(pivot);
-    // onda de choque atinge por distância (de dentro p/ fora); Plutão é longe demais
-    const destroyAt = p.key === 'plutao' ? Infinity : 0.1 + r / 150;
+    // Destruição por RADIAÇÃO (não pelo choque): só os rochosos têm energia de
+    // ligação baixa o suficiente p/ desintegrar. Morrem na chegada da LUZ, em
+    // sequência (tempo-luz ~ 8,32 min/UA, comprimido ×0.1): Mercúrio 0,32s ->
+    // Vênus 0,60s -> Terra 0,83s -> Marte 1,26s. Gigantes/gelo/Plutão sobrevivem.
+    const ROCKY = new Set(['mercurio', 'venus', 'terra', 'marte']);
+    const destroyAt = ROCKY.has(p.key) ? 0.83 * p.au : Infinity;
     planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats });
   });
 
