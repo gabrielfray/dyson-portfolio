@@ -169,12 +169,18 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let planetHover = -1;
   let anomalyHover = -1;
   let sunHover = false; // gigante azul (supernova) sob o cursor -> card
+  // histerese do hover do gigante: sem folga, girar/mover na borda do núcleo faz o
+  // hover piscar e REMONTA o card (typewriter reinicia = "duplicando/bugando").
+  let sunOver = false; // o cursor está sobre o núcleo AGORA (último evento de move)
+  let sunHoverGrace = 0; // s restantes antes de desligar o card após sair
+  const SUN_HOVER_GRACE = 0.22;
+  const clearSunHover = () => { if (sunHover) { sunHover = false; opts.onSunHover?.(false); } sunOver = false; sunHoverGrace = 0; };
   // controle manual: clicar no núcleo trava a rotação automática e libera o arraste
   let manual = false, dragging = false, moved = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0, manualPhi = 0;
   let coreClicks = 0, lastCoreClick = 0; // cliques seguidos no núcleo -> supernova
   const CORE_CLICKS_TO_DETONATE = 100; // cliques no núcleo p/ detonar a 1ª explosão
-  const TEST_SKIP_PUZZLE = false; // false = enigma real (sequência das 5 anomalias); true só p/ teste
+  const TEST_SKIP_PUZZLE = false; // false = enigma real (sequência das 5 anomalias na ordem certa)
   // Enigma "Contatos Imediatos": após a supernova, clicar os eggs na ordem do sinal
   // (cada egg = 1 tom). Ordem correta = índices 0..4 em sequência.
   const CONTACT_MAP: Record<string, number> = { voyager: 0, oumuamua: 1, monolith: 2, ufo: 3, hailmary: 4 };
@@ -259,16 +265,18 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     raycaster.setFromCamera(pointer, camera);
     // gigante azul (supernova renascida): card ao passar por cima, como os planetas
     if (sun.state.reborn && raycaster.intersectObject(corePick, false).length) {
+      sunOver = true; sunHoverGrace = SUN_HOVER_GRACE;
       if (!sunHover) { sunHover = true; opts.onSunHover?.(true); }
       clearPlanetHover(); clearAnomalyHover(); setHover(-1);
       renderer.domElement.style.cursor = 'pointer';
       return;
     }
-    if (sunHover) { sunHover = false; opts.onSunHover?.(false); }
+    sunOver = false; // saiu do núcleo: a folga (grace) desliga o card no loop, sem piscar
     // planetas e anomalias (exploração) — só quando nenhuma seção está aberta
     if (lockedIdx < 0) {
       const ph = planetPick.length ? raycaster.intersectObjects(planetPick, false) : [];
       if (ph.length) {
+        clearSunHover(); // entrou num planeta: encerra o card do gigante na hora (sem folga)
         const idx = ph[0].object.userData.planetIndex as number;
         if (planetHover !== idx) {
           planetHover = idx;
@@ -282,6 +290,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       clearPlanetHover();
       const ah = anomalyPick.length ? raycaster.intersectObjects(anomalyPick, false) : [];
       if (ah.length) {
+        clearSunHover(); // entrou numa anomalia: encerra o card do gigante na hora
         const key = ah[0].object.userData.anomalyKey as string;
         const idx = anomalies.findIndex((a) => a.key === key);
         if (anomalyHover !== idx) {
@@ -458,6 +467,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   let returnTheta = 0;                    // orientação a retomar quando o painel fecha
   let introDolly = 380;                   // câmera começa afastada (fly-in cinematográfico)
   let introActive = false;                // só recua depois que o usuário clica em "iniciar"
+  let approaching = false;                // reiniciar (fase 1): mergulha na estrela (dolly in)
+  let restartSpin = 0;                    // reiniciar: giro extra que decai até a rotação normal
   let rafId = 0;
   function animate() {
     rafId = requestAnimationFrame(animate);
@@ -518,18 +529,23 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const after = sun.state.reborn ? 1 : (shT >= 0 ? smoothstep(0.8, 2.2, shT) : 0);
     let plume = 0;
     if (sun.state.reviving) plume = shT >= 0 ? smoothstep(0, 0.5, shT) : 0;
-    else if (sun.state.reborn) { plumeT += dt; plume = Math.max(0.14, Math.exp(-plumeT / 7)); } // pluma decai p/ um resíduo (some quase toda; corpo segue quente)
+    else if (sun.state.reborn) { plumeT += dt; plume = Math.exp(-plumeT / 8); } // decai a ZERO em ~20s: pluma some de vez, planeta volta ao normal (só quente)
     const blastT = sun.state.exploding && sun.state.et > SN_BLAST_AT ? sun.state.et - SN_BLAST_AT : -1;
-    updatePlanets(planets, dt, planetHover, blastT, ir, after, plume);
+    updatePlanets(planets, dt, planetHover, blastT, ir, after, plume, t);
     updateAnomalies(t, userZoom, ir);
     updateSmoke(t, ir); // fumaça vermelha (fundo do modo IR)
     updateAstro(t, ir); // brilho de fundo (só no IR)
     galaxies.update(ir); // galáxias avermelhadas no modo IR
+    // histerese do card do gigante: se o cursor saiu do núcleo, só desliga após a
+    // folga (evita remontar o card e reiniciar o typewriter ao piscar na borda).
+    if (sunHover && !sunOver) { sunHoverGrace -= dt; if (sunHoverGrace <= 0) { sunHover = false; opts.onSunHover?.(false); } }
     // rastreia na tela o objeto sob o cursor (planeta, anomalia OU a gigante azul)
     const tracked = planetHover >= 0 ? planets[planetHover].body : anomalyHover >= 0 ? anomalies[anomalyHover].body : null;
     if (sunHover && opts.onPlanetTrack) {
       projV.set(0, 0, 0).project(camera); // a estrela fica na origem
-      opts.onPlanetTrack((projV.x * 0.5 + 0.5) * innerWidth, (-projV.y * 0.5 + 0.5) * innerHeight);
+      const gx = (projV.x * 0.5 + 0.5) * innerWidth, gy = (-projV.y * 0.5 + 0.5) * innerHeight;
+      opts.onPlanetTrack(gx, gy); // posiciona o retículo no gigante
+      opts.onSunTrack?.(gx, gy);  // e o card segue o gigante (offset fixo, sem flip)
     } else if (tracked && opts.onPlanetTrack) {
       tracked.getWorldPosition(projV);
       projV.project(camera);
@@ -539,7 +555,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     sx += (mouseX - sx) * 0.04;
     sy += (mouseY - sy) * 0.04;
     swoop *= 0.94;
-    if (introActive) introDolly *= 0.972; // fly-in: recua suavemente até a distância padrão
+    if (approaching) introDolly += (-130 - introDolly) * Math.min(1, dt * 4); // reiniciar: aproxima da estrela (dolly in)
+    else if (introActive) introDolly *= 0.972; // fly-in / recuo suave até a distância padrão
     focus += (targetFocus - focus) * 0.06;
     // Rotação da câmera:
     // - com um anel selecionado (ou voltando ao fechar), gira suavemente até um
@@ -554,6 +571,8 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     } else if (!manual) {
       camTheta += dt * 0.05 * (1 - focus * 0.85); // órbita automática (desligada no manual)
     }
+    camTheta += dt * restartSpin;             // giro extra do reinício (some com o tempo)
+    restartSpin *= Math.pow(0.5, dt / 1.6);   // decai suave até a rotação normal (meia-vida ~1,6s)
     const theta = camTheta + (manual ? 0 : sx * 0.35);
     // posição inicial afastada: enquadra a esfera inteira com folga. Ao focar,
     // um pequeno empurrão extra dá margem ao lado do painel aberto.
@@ -581,6 +600,13 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     setBloom(v: number) { bloomBase = v; },
     setFocus(f: number) { targetFocus = f; },
     startIntro() { introActive = true; },
+    debugReborn() { sun.state.exploding = false; sun.state.reviving = false; sun.state.dead = false; sun.state.reborn = true; }, // dev (F2): pula pro gigante/terminal
+    debugExplode() { sun.detonate(); }, // dev (F3): dispara a explosão do núcleo do sol (1ª)
+    debugSupernova() { sun.state.dead = true; sun.revive(); }, // dev (F4): dispara o nascimento da gigante azul
+    // reiniciar — fase 1 (cena atual): mergulha na estrela girando (atrás do clarão)
+    approachStar() { approaching = true; introActive = false; restartSpin = 0.8; },
+    // reiniciar — fase 2 (cena nova): começa colado na estrela e recua girando até normal
+    startRestartIntro() { approaching = false; introDolly = -130; introActive = true; restartSpin = 1.0; },
     stopPetrova() { stopPetrova(); },
     endPetrova() { endPetrova(); },
     setLocked(i: number) {

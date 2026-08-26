@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth, playCollapseRumble, playRestart } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -30,11 +30,17 @@ export default function App() {
   const [mission, setMission] = useState(false);   // 1ª explosão do sol -> missão secreta (puzzle); portfólio FICA
   const [collapsed, setCollapsed] = useState(false); // supernova (pós-puzzle) -> portfólio some + terminal de reset
   const [simKey, setSimKey] = useState(0); // remontar a cena p/ "reiniciar simulação"
+  const [resetting, setResetting] = useState(false); // transição do reinício (bloqueia input)
+  const [flash, setFlash] = useState(false);         // clarão branco que esconde o remount
+  const pendingRestart = useRef(false);              // pede o intro de recuo na cena nova
+  const restartingRef = useRef(false);               // trava reentrada durante a transição
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<DysonSceneApi | null>(null);
   const planetOverlayRef = useRef<HTMLDivElement | null>(null);
   const planetCardRef = useRef<HTMLDivElement | null>(null);
+  const sunCardRef = useRef<HTMLDivElement | null>(null); // card do gigante
+  const sunCardWrapRef = useRef<HTMLDivElement | null>(null); // wrapper que segue o gigante
   const selRef = useRef<number | null>(null);
   const collapsedRef = useRef(false);
   useEffect(() => {
@@ -49,6 +55,25 @@ export default function App() {
     setManual(false); setMission(false); setCollapsed(false); setHoverSun(false);
     setSimKey((k) => k + 1);
   }, []);
+
+  // Transição do reinício (cinematográfica, à prova de bug): (1) clarão branco
+  // entra + a câmera mergulha na estrela girando; (2) atrás do branco a cena
+  // remonta; (3) a cena nova começa colada na estrela e recua girando até a
+  // rotação normal, o branco some. O overlay bloqueia toda ação do usuário.
+  const doRestart = useCallback(() => {
+    if (restartingRef.current) return; // já em transição
+    restartingRef.current = true;
+    setResetting(true);
+    setFlash(true);                          // branco entra (~0,85s)
+    playRestart();                           // som sci-fi de reinício (casado com a transição)
+    sceneApiRef.current?.approachStar();     // cena atual mergulha na estrela
+    window.setTimeout(() => {
+      pendingRestart.current = true;
+      resetSim();                            // remonta (escondido pelo branco)
+      window.setTimeout(() => setFlash(false), 450);   // revela a cena nova recuando
+      window.setTimeout(() => { setResetting(false); restartingRef.current = false; }, 2600); // libera o input
+    }, 1000);
+  }, [resetSim]);
 
   const termLines = useTerminal(lang, started);
   const pt = lang === 'pt';
@@ -92,9 +117,19 @@ export default function App() {
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
       onSunDead: () => { setMission(true); window.setTimeout(() => playContactMotif(), 9000); }, // 1ª explosão -> missão secreta + convite (dica), portfólio FICA
-      onSupernova: () => { setMission(false); playSupernovaBirth(); }, // enigma resolvido -> some a dica (não atrapalha a animação) + som da supernova
+      onSupernova: () => { setMission(false); playCollapseRumble(); playSupernovaBirth(); }, // enigma resolvido -> some a dica + rumble do colapso (14s) + estouro (mp3)
       onReborn: () => setCollapsed(true),      // gigante azul formada -> portfólio some + terminal
       onSunHover: (over) => setHoverSun(over), // card da gigante azul
+      onSunTrack: (x, y) => {
+        // card do gigante segue a estrela com offset lateral FIXO (sem flip -> não pula/
+        // duplica). Vai p/ a direita, ou p/ a esquerda se a estrela estiver muito à direita.
+        const w = sunCardWrapRef.current;
+        if (!w) return;
+        const left = x > innerWidth * 0.62; // gigante fica sempre no centro -> quase sempre à direita
+        const ox = left ? x - 378 : x + 14; // card (272px, +46 do offset interno) ao lado do gigante
+        w.style.transform = `translate(${ox}px, ${y}px)`;
+        w.style.opacity = '1';
+      },
       onContactTone: (i) => playContactTone(i),
       onContactWrong: () => playContactWrong(),
 
@@ -130,6 +165,8 @@ export default function App() {
       },
     });
     sceneApiRef.current = api;
+    // após remontar por "/reiniciar": a cena nova começa colada na estrela e recua girando
+    if (pendingRestart.current) { pendingRestart.current = false; api.startRestartIntro(); }
     return () => {
       api.dispose();
       sceneApiRef.current = null;
@@ -140,6 +177,20 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
+      // Atalhos de DEV (apenas `npm run dev`; import.meta.env.DEV vira false no build
+      // de produção e este bloco é eliminado). Avançam a simulação p/ testar as fases.
+      if (import.meta.env.DEV) {
+        const api = sceneApiRef.current as unknown as { debugReborn?: () => void; debugExplode?: () => void; debugSupernova?: () => void } | null;
+        if (e.key === 'F2') { // pula direto pro terminal de reset (gigante + collapsed)
+          e.preventDefault(); api?.debugReborn?.(); setMission(false); setCollapsed(true);
+        }
+        if (e.key === 'F3') { // dispara a EXPLOSÃO do núcleo do sol (1ª) -> missão
+          e.preventDefault(); api?.debugExplode?.();
+        }
+        if (e.key === 'F4') { // dispara o NASCIMENTO da gigante azul (supernova) + áudio
+          e.preventDefault(); api?.debugSupernova?.(); setMission(false); playCollapseRumble(); playSupernovaBirth();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -195,7 +246,7 @@ export default function App() {
       {started && mission && !collapsed && <SupernovaHint lang={lang} />}
 
       {/* supernova (pós-puzzle): portfólio some, aparece o terminal de reset */}
-      {started && collapsed && <ResetTerminal lang={lang} onReset={resetSim} />}
+      {started && collapsed && <ResetTerminal lang={lang} onReset={doRestart} />}
 
       {/* HUD do portfólio: fica na 1ª explosão/missão; só some após a supernova */}
       {started && !collapsed && (
@@ -221,14 +272,19 @@ export default function App() {
       {(hoverPlanet !== null || hoverAnomaly !== null || hoverSun) && (
         <S.PlanetOverlay ref={planetOverlayRef}>
           <Reticle />
-          {hoverSun ? (
-            <SupernovaCard key={'supernova-' + lang} lang={lang} innerRef={planetCardRef} />
-          ) : hoverAnomaly !== null ? (
+          {hoverAnomaly !== null ? (
             <AnomalyCard key={hoverAnomaly + '-' + lang} anomKey={hoverAnomaly} lang={lang} innerRef={planetCardRef} />
-          ) : (
+          ) : hoverPlanet !== null ? (
             <PlanetCard key={PLANETS[hoverPlanet!].key + '-' + lang + (collapsed ? '-x' : '')} planet={PLANETS[hoverPlanet!]} lang={lang} innerRef={planetCardRef} after={collapsed} />
-          )}
+          ) : null}
         </S.PlanetOverlay>
+      )}
+
+      {/* card do gigante azul: segue o gigante com offset lateral fixo (sem flip) */}
+      {hoverSun && (
+        <S.SunCardWrap ref={sunCardWrapRef}>
+          <SupernovaCard key={'supernova-' + lang} lang={lang} innerRef={sunCardRef} />
+        </S.SunCardWrap>
       )}
 
       {!started && (
@@ -238,6 +294,9 @@ export default function App() {
           onFinished={() => setStarted(true)}
         />
       )}
+
+      {/* transição do reinício: esconde o remount e bloqueia toda interação */}
+      <S.RestartFlash $on={flash} $block={resetting} />
     </S.Root>
   );
 }

@@ -22,6 +22,7 @@ export interface DysonSceneOptions {
   onSupernova?: () => void; // enigma resolvido -> começa a 2ª explosão (som da supernova)
   onReborn?: () => void;    // a gigante azul terminou de se formar -> rescaldo/terminal
   onSunHover?: (over: boolean) => void; // hover na gigante azul (supernova) -> card
+  onSunTrack?: (x: number, y: number) => void; // posição do gigante na tela -> card segue
   onContactTone?: (toneIndex: number) => void; // tom de um egg clicado (0..4)
   onContactWrong?: () => void; // clique fora da sequência -> reinicia
   onContactSolved?: () => void; // sequência completa -> renascimento
@@ -33,6 +34,11 @@ export interface DysonSceneApi {
   setFocus: (f: number) => void;
   setLocked: (i: number) => void;
   startIntro: () => void; // dispara o fly-in cinematográfico da câmera
+  debugReborn?: () => void; // dev (F2): força o estado de gigante azul (só usado em import.meta.env.DEV)
+  debugExplode?: () => void; // dev (F3): dispara a explosão do núcleo do sol (1ª)
+  debugSupernova?: () => void; // dev (F4): dispara o nascimento da gigante azul
+  approachStar: () => void; // reiniciar (fase 1): mergulha na estrela girando
+  startRestartIntro: () => void; // reiniciar (fase 2): recua girando até a rotação normal
   stopPetrova: () => void; // stop "leve": ignorado enquanto o evento está travado (roda até o fim)
   endPetrova: () => void;  // stop "forçado": encerra de fato (fim da música ou troca de easter egg)
   dispose: () => void;

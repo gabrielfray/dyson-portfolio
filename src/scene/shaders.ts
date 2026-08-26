@@ -87,6 +87,10 @@ export const GLOW_FRAG = `precision highp float;
     float pulse = 1.0 + 0.05*sin(uTime*1.1);
     float a = pow(d, 2.4)*(1.1+0.5*plasma)*pulse;
     col = mix(col, col.bgr, uReborn); // renascimento: plasma dourado -> azul (supernova)
+    // gigante azul: menos "estouro" e menos verde -> o núcleo carrega #b5cdff
+    // (azul-branco pálido), com branco puro só no ponto mais interno (d~1).
+    col *= (1.0 - uReborn*0.24);
+    col.g = mix(col.g, col.g*0.85, uReborn);
     gl_FragColor = vec4(col*(1.05+0.55*fil)*pulse, min(a,1.0));
   }`;
 

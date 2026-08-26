@@ -177,11 +177,17 @@ export function playContactWrong(): void {
 // Sons "cinemáticos" de arquivo tocados em elementos próprios: tocam inteiros,
 // nunca são cortados por cliques (ao contrário dos eggs, que passam por stopAllSfx).
 const oneShots: Record<string, HTMLAudioElement> = {};
-function playOneShot(name: string, vol: number): void {
-  let a = oneShots[name];
-  if (!a) { a = new Audio(import.meta.env.BASE_URL + 'sounds/' + name); a.preload = 'auto'; oneShots[name] = a; }
-  a.volume = vol; a.currentTime = 0;
-  void a.play().catch(() => { /* sem gesto/arquivo ausente: ignora */ });
+const oneShotTimers: Record<string, number> = {};
+function playOneShot(name: string, vol: number, delayMs = 0): void {
+  window.clearTimeout(oneShotTimers[name]);
+  const start = () => {
+    let a = oneShots[name];
+    if (!a) { a = new Audio(import.meta.env.BASE_URL + 'sounds/' + name); a.preload = 'auto'; oneShots[name] = a; }
+    a.volume = vol; a.currentTime = 0;
+    void a.play().catch(() => { /* sem gesto/arquivo ausente: ignora */ });
+  };
+  if (delayMs > 0) oneShotTimers[name] = window.setTimeout(start, delayMs);
+  else start();
 }
 // o "convite": os 5 tons em sequência; a última é sustentada (dur = passo*2.6),
 // é ela que deixa a frase em aberto. Mesmo timbre dos eggs (reproduzir de ouvido).
@@ -189,8 +195,86 @@ export function playContactMotif(): void {
   const ac = getCtx(); const t0 = ac.currentTime + 0.1; const passo = CONTACT_STEP;
   CONTACT_FREQS.forEach((f, i) => contactNote(ac, f, t0 + i * passo, i === 4 ? passo * 2.6 : passo * 0.86, CONTACT_BRIGHT));
 }
-// renascimento: explosão da supernova (Crab, gravação real), junto com o clarão azul
-export function playSupernovaBirth(): void { playOneShot('supernova-birth.mp3', 0.5); }
+// renascimento: explosão da supernova (Crab, gravação real). Atraso de 8,2s p/ o
+// pico do clipe (~5,7s) cair na IGNIÇÃO visual (SN_REVIVE_BLAST = 13,9s no revive).
+export function playSupernovaBirth(): void { playOneShot('supernova-birth.mp3', 0.5, 8200); }
+
+// Som do REINÍCIO — pequena PEÇA cinematográfica (não sound-design de bipe),
+// casada com a transição do /reiniciar. Progressão IV -> I (Fá -> Dó, cadência
+// "plagal/amém" = restauração): (1) pad grave em Fá sobe no MERGULHO; (2) no
+// WHITEOUT (~1,0s) resolve num acorde de Dó maior que floresce + sinos brilhantes
+// + sub grave; (3) arpejo ascendente (sistemas ONLINE) sobre o pad que dura ~3s.
+// Tudo com reverb p/ espaço. Auto-termina; atravessa o remount sem cortar.
+export function playRestart(): void {
+  const ac = getCtx();
+  const t0 = ac.currentTime + 0.02;
+  // glue/limiter + master
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 22; comp.ratio.value = 3; comp.attack.value = 0.006; comp.release.value = 0.25;
+  const master = ac.createGain(); master.gain.value = 0.7; master.connect(comp).connect(ac.destination);
+  // reverb (convolução com IR de ruído decaindo) — cauda de "sala grande"
+  const irLen = Math.floor(ac.sampleRate * 2.8);
+  const ir = ac.createBuffer(2, irLen, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < irLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 3.2); }
+  const reverb = ac.createConvolver(); reverb.buffer = ir;
+  const wet = ac.createGain(); wet.gain.value = 0.5; reverb.connect(wet).connect(master);
+  const bus = ac.createGain(); bus.connect(master); bus.connect(reverb); // dry + send
+
+  // voz: oscilador com envelope (ataque/decaimento) -> bus
+  const voice = (freq: number, start: number, dur: number, peak: number, type: OscillatorType, det: number, atk: number) => {
+    const o = ac.createOscillator(); o.type = type; o.frequency.value = freq; o.detune.value = det;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(peak, start + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    o.connect(g).connect(bus); o.start(start); o.stop(start + dur + 0.05);
+  };
+  // acorde (pad) — cada nota dobrada com leve detune p/ largura
+  const chord = (freqs: number[], start: number, dur: number, peak: number, atk: number) =>
+    freqs.forEach((f) => { voice(f, start, dur, peak, 'sine', -5, atk); voice(f, start, dur, peak, 'sine', 6, atk); });
+
+  // (1) MERGULHO — pad grave em Fá maior sobe (ataque lento ~0,9s)
+  chord([87.31, 130.81, 174.61, 220.0], t0, 1.35, 0.05, 0.9); // F2 C3 F3 A3
+
+  // (2) WHITEOUT (~1,0s) — resolve em Dó maior (floresce) + sub + sinos
+  const impT = t0 + 0.95;
+  chord([130.81, 164.81, 196.0, 261.63], impT, 3.0, 0.055, 0.28); // C3 E3 G3 C4 (sustenta na cauda)
+  voice(65.41, impT + 0.05, 0.7, 0.16, 'sine', 0, 0.02); // C2 — peso do impacto
+  voice(523.25, impT + 0.05, 1.8, 0.09, 'triangle', 0, 0.008); // C5 sino
+  voice(659.25, impT + 0.10, 1.7, 0.07, 'triangle', 0, 0.008); // E5 sino
+
+  // (3) ONLINE — arpejo ascendente de Dó sobre o pad (sistemas voltando)
+  [261.63, 329.63, 392.0, 523.25, 659.25].forEach((f, i) => // C4 E4 G4 C5 E5
+    voice(f, t0 + 1.15 + i * 0.17, 1.2, 0.055, 'sine', 0, 0.012));
+}
+
+// Rumble do COLAPSO: enche os ~14s de queda livre até a ignição (senão fica um
+// silêncio antes do estouro). Sub grave + ruído filtrado que sobem de tom e volume
+// e climaxam na ignição; o mp3 (blast) assume dali. Auto-termina (não corta cliques).
+export function playCollapseRumble(): void {
+  const ac = getCtx();
+  const t0 = ac.currentTime, dur = 13.9;
+  const sub = ac.createOscillator(); sub.type = 'sawtooth';
+  sub.frequency.setValueAtTime(26, t0); sub.frequency.exponentialRampToValueAtTime(78, t0 + dur);
+  const subG = ac.createGain();
+  subG.gain.setValueAtTime(0.0001, t0);
+  subG.gain.exponentialRampToValueAtTime(0.17, t0 + dur * 0.94);
+  subG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.7);
+  const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  const nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = nb; noise.loop = true;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(120, t0); lp.frequency.exponentialRampToValueAtTime(1100, t0 + dur);
+  const nG = ac.createGain();
+  nG.gain.setValueAtTime(0.0001, t0);
+  nG.gain.exponentialRampToValueAtTime(0.10, t0 + dur * 0.92);
+  nG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.6);
+  sub.connect(subG).connect(ac.destination);
+  noise.connect(lp).connect(nG).connect(ac.destination);
+  sub.start(t0); noise.start(t0);
+  sub.stop(t0 + dur + 0.9); noise.stop(t0 + dur + 0.8);
+}
 
 // --- Eggs com arquivo de áudio (public/sounds/<arquivo>) ---
 const FILES: Record<string, string> = {
@@ -255,6 +339,7 @@ function stopFile(): void {
 export function stopAllSfx(): void {
   stopUfo();
   stopFile();
+  for (const k in oneShotTimers) window.clearTimeout(oneShotTimers[k]); // cancela one-shots agendados (ex.: reset durante o atraso)
 }
 
 // Roteia a tecla do easter egg p/ o efeito certo (fácil de estender depois).

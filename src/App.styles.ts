@@ -62,3 +62,28 @@ export const PlanetOverlay = styled.div`
   opacity: 0;
   will-change: transform;
 `;
+
+// Card do gigante azul: segue o gigante via transform (posicionado imperativamente),
+// SEM flip de âncora — o card fica sempre no mesmo offset lateral, então não pula/
+// duplica como antes (o bug vinha do flip esquerda↔direita, não do seguir em si).
+export const SunCardWrap = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 36;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+`;
+
+// Clarão da transição de reinício: entra por cima de tudo (esconde o remount) e
+// bloqueia toda interação enquanto $block. Tom azul-branco (o núcleo da estrela).
+export const RestartFlash = styled.div<{ $on: boolean; $block: boolean }>`
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: radial-gradient(circle at 50% 46%, #f4f8ff 0%, #cfe0ff 52%, #9fbdf0 100%);
+  opacity: ${(p) => (p.$on ? 1 : 0)};
+  transition: opacity 0.85s ease;
+  pointer-events: ${(p) => (p.$block ? 'auto' : 'none')};
+`;

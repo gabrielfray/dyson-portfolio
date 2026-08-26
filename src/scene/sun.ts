@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { GLOW_FRAG, GLOW_FRAG_MOBILE, GLOW_VERT } from './shaders';
+import { createBirthFX, BIRTH_IGN } from './birthFX';
 
 export const SUN_R = 6;
 // Instante do BLAST (s após detonar) — coincide com o estouro do áudio
 // (public/sounds/supernova.mp3, explosão em ~11,9s do clipe). Recortou o áudio?
 // Ajuste este valor p/ o novo instante da explosão no clipe.
 export const SN_BLAST_AT = 11.9;
-// Supernova (2ª explosão, via revive): instante do BLAST dentro do revive (s),
-// alinhado ao pico do áudio public/sounds/supernova-birth.mp3 (~5,7s do clipe).
-export const SN_REVIVE_BLAST = 5.7;
+// Supernova (2ª explosão, via revive): instante da IGNIÇÃO dentro do revive (s) —
+// é quando a casca de Dyson se despedaça e o áudio estoura. = BIRTH_IGN · REVIVE_DUR.
+export const SN_REVIVE_BLAST = 13.9;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (a: number, b: number, x: number) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -64,6 +65,26 @@ const EJECTA_FRAG = `${SN_BLACKBODY}
     float rim=pow(1.0-max(dot(vNorm,vView),0.0),1.4);
     float knot=0.35+0.9*vN2;                 // nós/filamentos mais brilhantes
     gl_FragColor=vec4(col*knot*(0.5+0.9*rim), uOpacity*(0.35+0.65*vN2)); }`;
+// Supernova (2ª explosão): onda de choque = casca FINA (Fresnel, só o limbo
+// acende, não bolha cheia) que expande varrendo o espaço. Substitui o "campo".
+const SHOCK_VERT = `varying vec3 vN; varying vec3 vV;
+  void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz);
+    gl_Position=projectionMatrix*mv; }`;
+const SHOCK_FRAG = `uniform float uOpacity; uniform vec3 uColor;
+  varying vec3 vN; varying vec3 vV;
+  void main(){ float rim=pow(1.0-abs(dot(vN,vV)),3.2);
+    gl_FragColor=vec4(uColor*(0.35+rim), rim*uOpacity); }`;
+// Raios radiais: cada raio é um segmento (interno->externo) cuja posição é
+// calculada 100% no vertex shader a partir de uProg (custo zero de CPU). Disparam
+// pra todos os lados e esmaecem — o "raio de explosão que espalha pelo espaço".
+const RAYS_VERT = `attribute vec3 aDir; attribute float aLen; attribute float aEnd;
+  uniform float uProg; uniform float uR0; varying float vEnd;
+  void main(){ vEnd=aEnd;
+    float reach=uR0 + (aLen-uR0)*pow(uProg,0.6);
+    float rr=mix(uR0*0.5, reach, aEnd);
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(aDir*rr,1.0); }`;
+const RAYS_FRAG = `uniform float uOpacity; uniform vec3 uColor; varying float vEnd;
+  void main(){ float a=(1.0-vEnd)*uOpacity; gl_FragColor=vec4(uColor*(0.7+0.6*a), a); }`;
 
 export interface SunState { exploding: boolean; et: number; flash: number; shake: number; dead: boolean; reviving: boolean; rt: number; reborn: boolean }
 
@@ -161,10 +182,43 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
   ejecta.frustumCulled = false; ejecta.visible = false;
   scene.add(ejecta);
 
+  // ---- Supernova (2ª explosão): onda de choque fina + raios radiais ----
+  const snShockMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(0.74, 0.86, 1.0) } },
+    vertexShader: SHOCK_VERT, fragmentShader: SHOCK_FRAG,
+  });
+  const snShock = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 48), snShockMat);
+  snShock.frustumCulled = false; snShock.visible = false;
+  scene.add(snShock);
+
+  const RAYN = isMobile ? 220 : 440;
+  const rDir = new Float32Array(RAYN * 2 * 3), rLen = new Float32Array(RAYN * 2), rEnd = new Float32Array(RAYN * 2);
+  for (let i = 0; i < RAYN; i++) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+    const dx = s * Math.cos(th), dy = u, dz = s * Math.sin(th);
+    const len = 42 + Math.pow(Math.random(), 1.6) * 100; // alcance variado -> raios de comprimentos diferentes
+    for (const e of [0, 1]) { const j = i * 2 + e; rDir[j * 3] = dx; rDir[j * 3 + 1] = dy; rDir[j * 3 + 2] = dz; rLen[j] = len; rEnd[j] = e; }
+  }
+  const rGeo = new THREE.BufferGeometry();
+  rGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(RAYN * 2 * 3), 3)); // placeholder: o shader posiciona
+  rGeo.setAttribute('aDir', new THREE.BufferAttribute(rDir, 3));
+  rGeo.setAttribute('aLen', new THREE.BufferAttribute(rLen, 1));
+  rGeo.setAttribute('aEnd', new THREE.BufferAttribute(rEnd, 1));
+  const snRaysMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uProg: { value: 0 }, uR0: { value: SUN_R }, uOpacity: { value: 0 }, uColor: { value: new THREE.Color(0.78, 0.88, 1.0) } },
+    vertexShader: RAYS_VERT, fragmentShader: RAYS_FRAG,
+  });
+  const snRays = new THREE.LineSegments(rGeo, snRaysMat);
+  snRays.frustumCulled = false; snRays.visible = false;
+  scene.add(snRays);
+
   const state: SunState = { exploding: false, et: 0, flash: 0, shake: 0, dead: false, reviving: false, rt: 0, reborn: false };
   let rebornMix = 0; // 0 = sol dourado original · 1 = supernova azul renascida
   const glowMat = glow.material as THREE.ShaderMaterial;
-  const REVIVE_DUR = 11.0; // supernova cinematográfica: carga (~5,7s) + blast + expansão
+  const REVIVE_DUR = 24.0; // câmera lenta: colapso (~0-14s) -> ignição -> emanação -> gigante (~24s)
+  const birth = createBirthFX(scene, isMobile); // efeitos do nascimento (colapso/ignição/emanação)
 
   return {
     state,
@@ -191,62 +245,39 @@ export function createSun(scene: THREE.Scene, isMobile = false): { update: (t: n
       if (state.reviving) {
         state.rt += dt;
         const r = state.rt;
-        const B = SN_REVIVE_BLAST;
-        if (r < B) {
-          // CARGA: reacende azul, incha e pulsa cada vez mais, e implode no fim
-          const c = r / B, acc = c * c;
-          rebornMix = smooth(0.15, 0.9, c); // glow já azul
-          sun.visible = true; glow.visible = true;
-          const implode = smooth(0.82, 1.0, c); // implosão nos últimos ~18%
-          sun.scale.setScalar((0.13 + 0.55 * acc) * (1 - implode * 0.86) * (1 + Math.sin(r * (5 + 26 * acc)) * 0.05 * acc));
-          sunMat.color.setRGB(0.62, 0.78, 1.0);
-          sunLight.color.setRGB(0.7, 0.82, 1.0);
-          sunLight.intensity = 200 + acc * 2600 * (1 - implode);
-          glow.scale.setScalar(0.3 + acc * 0.9);
-          state.flash = 0;
-          state.shake = acc * 0.05;
+        const s = clamp01(r / REVIVE_DUR); // progresso 0..1 (câmera lenta)
+        // efeitos do nascimento (colapso -> ignição -> emanação); retorna o clarão
+        const flash = birth.update(s, t);
+        state.flash = flash * 2.4;
+        ejecta.visible = false; shell.visible = false; ring.visible = false; points.visible = false; snShock.visible = false; snRays.visible = false;
+        // NÚCLEO = nosso modelo: brasa que colapsa -> reacende na ignição -> gigante
+        rebornMix = smooth(BIRTH_IGN - 0.12, BIRTH_IGN + 0.02, s);
+        sun.visible = true; glow.visible = true;
+        if (s < BIRTH_IGN) {
+          // COLAPSO: brasa azul-escura, pequena, comprime no fim (implode)
+          const c = s / BIRTH_IGN, implode = smooth(0.82, 1.0, c);
+          sun.scale.setScalar((0.09 + 0.10 * c) * (1 - implode * 0.7));
+          sunMat.color.setRGB(0.24, 0.34, 0.62);
+          sunLight.color.setRGB(0.5, 0.62, 1.0);
+          sunLight.intensity = 120 + c * 500;
+          glow.scale.setScalar(0.12 + c * 0.28);
+          state.shake = c * 0.03;
         } else {
-          // BLAST + expansão (a supernova de verdade)
-          const e = r - B;
-          rebornMix = 1;
-          state.flash = smooth(0, 0.14, e) * (1 - smooth(0.2, 1.1, e)) * 2.0; // clarão azul forte
-          // ejeta RT azul-branca
-          ejecta.visible = true;
-          const blast = smooth(0, 2.6, e);
-          const ejS = SUN_R * (0.4 + blast * 22); // não engolfa tanto -> dá p/ ver os estilhaços
-          ejMat.uniforms.uScale.value = ejS;
-          ejMat.uniforms.uAmp.value = lerp(0.2, 0.95, blast);
-          ejMat.uniforms.uTime.value = 100.0 + e * 1.6;
-          ejMat.uniforms.uTemp.value = 24000;
-          ejMat.uniforms.uOpacity.value = 0.9 * smooth(0, 0.12, e) * (1 - smooth(2.4, 5.0, e));
-          // frente de choque azul
-          shell.visible = true;
-          shell.scale.setScalar(ejS * 1.15);
-          shellMat.opacity = smooth(0, 0.1, e) * (1 - smooth(0.4, 2.6, e)) * 0.8;
-          shellMat.color.setRGB(0.72, 0.85, 1.0);
-          // faíscas azuis
-          points.visible = true;
-          for (let i = 0; i < N; i++) {
-            const d = SUN_R * 0.5 + speeds[i] * e * 0.9;
-            positions[i * 3] = dirs[i * 3] * d; positions[i * 3 + 1] = dirs[i * 3 + 1] * d; positions[i * 3 + 2] = dirs[i * 3 + 2] * d;
-          }
-          ptsGeo.attributes.position.needsUpdate = true;
-          ptsMat.opacity = smooth(0, 0.12, e) * (1 - smooth(2.4, 5.0, e)) * 0.9;
-          ptsMat.color.setRGB(0.72, 0.85, 1.0);
-          // gigante azul cresce e fica
-          const grow = smooth(1.6, 4.6, e);
-          sun.visible = true;
-          sun.scale.setScalar(lerp(0.12, 1.4, grow) * (1 + Math.sin(e * 8) * 0.03 * (1 - grow)));
+          // IGNIÇÃO + EMANAÇÃO: pico grande e depois ASSENTA no tamanho estável
+          // (1,15/1,05) — sem pulo quando o revive acaba e o estado estável assume.
+          const ema = smooth(BIRTH_IGN, 0.86, s);
+          const settle = smooth(0.86, 1.0, s); // do pico -> tamanho estável
+          sun.scale.setScalar(lerp(0.05, 1.4, ema) * lerp(1.0, 1.15 / 1.4, settle) * (1 + Math.sin(t * 8) * 0.03 * (1 - ema)));
           sunMat.color.setRGB(0.62, 0.78, 1.0);
           sunLight.color.setRGB(0.7, 0.82, 1.0);
-          sunLight.intensity = 140 + smooth(0, 0.2, e) * 6200 * (1 - smooth(0.4, 2.0, e)) + grow * 2600;
-          glow.visible = true;
-          glow.scale.setScalar(lerp(0.3, 1.2, grow));
+          sunLight.intensity = 140 + flash * 7000 + ema * lerp(2600, 2760, settle);
+          glow.scale.setScalar(lerp(0.3, 1.2, ema) * lerp(1.0, 1.05 / 1.2, settle));
           state.shake = Math.max(state.flash * 0.8, 0);
+          rebornMix = 1;
         }
         if (r >= REVIVE_DUR) {
           state.reviving = false; state.exploding = false; state.dead = false; state.reborn = true;
-          rebornMix = 1; shell.visible = false; ring.visible = false; points.visible = false; ejecta.visible = false;
+          rebornMix = 1; birth.hide();
         }
         return;
       }

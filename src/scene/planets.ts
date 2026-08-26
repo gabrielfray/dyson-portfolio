@@ -19,15 +19,158 @@ export interface PlanetRt {
   fx: PlanetFx | null; // efeito de destruição (criado ao morrer)
   irMats: THREE.ShaderMaterial[]; // materiais que recebem o tom infravermelho (corpo, atmosfera, anel)
   ring: THREE.Mesh | null; // anel (Saturno) — sublima no pós-supernova
-  tail: THREE.Mesh | null; // cauda cometária (sobreviventes) — atmosfera arrancada
+  plume: PlumeRt | null; // pluma de ablação (sobreviventes) — gás arrancado
 }
 
-// Cauda cometária: cone aditivo que flui radialmente p/ longe da estrela (origem).
-// Estreito e brilhante no planeta, alargando e esmaecendo p/ fora.
-const TAIL_VERT = `varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
-// fade forte (^3) concentrado no planeta -> vira um sopro difuso, não um feixe
-const TAIL_FRAG = `uniform float uOpacity; uniform vec3 uColor; varying float vY;
-  void main(){ float a = pow(vY, 3.0); gl_FragColor = vec4(uColor, a * uOpacity); }`;
+// ---- Pluma de ablação (substitui o cone) ----
+// Gás incandescente arrancado do sobrevivente, apontando radialmente p/ longe da
+// estrela. Três camadas: VÉU (faixa extrudada em espaço de vista, sem aresta),
+// PARTÍCULAS (posição 100% no vertex shader) — a cor vem de corpo negro (azul
+// quente na base -> laranja frio na ponta), não é escolhida. Ela ABRE, não afina.
+const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
+// corpo negro -> RGB (aprox. Tanner Helland): a cor é derivada da temperatura
+function blackbody(T: number): THREE.Color {
+  const t = cl(T, 1000, 40000) / 100;
+  const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+  const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  return new THREE.Color(cl(r, 0, 255) / 255, cl(g, 0, 255) / 255, cl(b, 0, 255) / 255);
+}
+const C_BASE = blackbody(26000); // ~#a8c4ff — onde o gás sai (quente)
+const C_MEIO = blackbody(7000);  // creme
+const C_PONTA = blackbody(3200); // laranja (frio, morrendo)
+
+// textura de ponto (gradiente radial) p/ as partículas
+const plumeDot = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.32, 'rgba(255,255,255,.42)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+})();
+
+// VÉU: faixa extrudada em espaço de vista (encara a câmera de qualquer ângulo, sem
+// silhueta poligonal). Largura cresce ao longo do comprimento -> a pluma ABRE.
+const VEU_VERT = `
+  attribute float lado; attribute float tt;
+  uniform float uComp, uR0, uRmax, uLargMult, uTempo;
+  varying float vLado; varying float vT;
+  void main(){
+    vLado = lado; vT = tt;
+    float d = uComp * pow(tt, 0.86);
+    vec4 mv = modelViewMatrix * vec4(d, 0.0, 0.0, 1.0);
+    vec3 tv = normalize((modelViewMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    vec3 pc = cross(tv, normalize(-mv.xyz));
+    float pl = length(pc); // pluma apontando p/ a câmera -> perp colapsa: usa fallback
+    vec3 perp = pl > 0.001 ? pc / pl : normalize(cross(tv, vec3(0.0, 1.0, 0.0)));
+    float larg = (uR0 + (uRmax - uR0) * pow(tt, 0.72)) * uLargMult;
+    larg *= 1.0 + 0.13 * sin(tt * 13.0 - uTempo * 1.1);
+    mv.xyz += perp * lado * larg;
+    gl_Position = projectionMatrix * mv;
+  }`;
+const VEU_FRAG = `
+  uniform float uTempo, uInt, uSuave, uSat;
+  uniform vec3 uBase, uMeio, uPonta;
+  varying float vLado; varying float vT;
+  float hf(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+  float rf(float x){ float i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(hf(i), hf(i + 1.0), f); }
+  float fb(float x){ float a = 0.5, s = 0.0; for(int i = 0; i < 4; i++){ s += a * rf(x); a *= 0.5; x *= 2.07; } return s; }
+  void main(){
+    float b = pow(max(0.0, 1.0 - abs(vLado)), uSuave);
+    b *= 0.62 + 0.62 * fb(vT * 11.0 - uTempo * 1.5);   // turbulência rolando
+    b *= smoothstep(0.0, 0.035, vT);                   // nasce colado no planeta
+    b *= 1.0 - smoothstep(0.42, 1.0, vT);              // dissipa, não termina em bico
+    vec3 c = mix(uBase, uMeio, smoothstep(0.0, 0.34, vT));
+    c = mix(c, uPonta, smoothstep(0.34, 0.85, vT));
+    c = mix(vec3(dot(c, vec3(0.33))), c, uSat);        // saturação
+    gl_FragColor = vec4(c, clamp(b, 0.0, 1.0) * uInt);
+  }`;
+// PARTÍCULAS: posição calculada 100% no vertex a partir de fract(tempo·vel + fase).
+const PART_VERT = `
+  attribute float fase, ang, rfrac, vmult, semente, tam;
+  uniform float uTempo, uComp, uR0, uRmax, uEscala;
+  varying float vT;
+  void main(){
+    float t = fract(uTempo * 0.085 * vmult + fase);
+    vT = t;
+    float d = uComp * pow(t, 0.84);
+    float r = (uR0 + (uRmax - uR0) * pow(t, 0.70)) * rfrac;   // ABRE ao se afastar
+    float a = ang + t * 1.5 * (semente - 0.5);
+    vec3 p = vec3(d, cos(a) * r, sin(a) * r);
+    p.y += sin(t * 8.4 + semente * 33.0) * r * 0.34;         // turbulência
+    p.z += cos(t * 6.7 + semente * 21.0) * r * 0.34;
+    p.x += sin(t * 5.1 + semente * 11.0) * uComp * 0.012;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_PointSize = clamp(tam * (1.0 + t * 3.4) * uEscala / max(1.0, -mv.z), 0.7, 16.0);
+    gl_Position = projectionMatrix * mv;
+  }`;
+const PART_FRAG = `
+  uniform sampler2D uMapa; uniform float uInt, uSat;
+  uniform vec3 uBase, uMeio, uPonta;
+  varying float vT;
+  void main(){
+    float al = texture2D(uMapa, gl_PointCoord).a;
+    if(al < 0.01) discard;
+    float vA = smoothstep(0.0, 0.035, vT) * pow(1.0 - vT, 1.35);
+    vec3 c = mix(uBase, uMeio, smoothstep(0.0, 0.30, vT));
+    c = mix(c, uPonta, smoothstep(0.30, 0.82, vT));
+    c = mix(vec3(dot(c, vec3(0.33))), c, uSat);
+    gl_FragColor = vec4(c, al * vA * uInt);
+  }`;
+
+interface PlumeRt { group: THREE.Group; veuMats: THREE.ShaderMaterial[]; partMat: THREE.ShaderMaterial }
+
+// Cria a pluma de um sobrevivente (véu de 3 camadas + partículas), dimensionada ao
+// planeta. Valores cravados no ponto CINEMA ~0,55 do protótipo. Começa invisível;
+// a intensidade é dirigida por updatePlanets (plume 0..1 = time-gated).
+function createPlume(size: number): PlumeRt {
+  const group = new THREE.Group();
+  const comp = size * 19, r0 = size * 0.75, rmax = size * 5.0, sat = 0.66;
+  const veuMats: THREE.ShaderMaterial[] = [];
+  const LAYERS: [number, number, number][] = [[1.0, 1.9, 0.30], [2.4, 1.15, 0.13], [4.6, 1.0, 0.055]]; // largMult, suave, intBase
+  for (const [largMult, suave, intBase] of LAYERS) {
+    const N = 64; const pos: number[] = [], lad: number[] = [], tv: number[] = [], idx: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      for (const s of [-1, 1]) { pos.push(0, 0, 0); lad.push(s); tv.push(t); }
+      if (i < N - 1) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('lado', new THREE.Float32BufferAttribute(lad, 1));
+    g.setAttribute('tt', new THREE.Float32BufferAttribute(tv, 1));
+    g.setIndex(idx);
+    const m = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { uTempo: { value: 0 }, uInt: { value: 0 }, uSuave: { value: suave }, uLargMult: { value: largMult }, uR0: { value: r0 }, uRmax: { value: rmax }, uComp: { value: comp }, uBase: { value: C_BASE.clone() }, uMeio: { value: C_MEIO.clone() }, uPonta: { value: C_PONTA.clone() }, uSat: { value: sat } },
+      vertexShader: VEU_VERT, fragmentShader: VEU_FRAG,
+    });
+    m.userData.intBase = intBase;
+    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; group.add(mesh); veuMats.push(m);
+  }
+  // partículas
+  const NP = 2400;
+  const aFase = new Float32Array(NP), aAng = new Float32Array(NP), aRad = new Float32Array(NP), aVel = new Float32Array(NP), aSem = new Float32Array(NP), aTam = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) {
+    aFase[i] = Math.random(); aAng[i] = Math.random() * 6.283; aRad[i] = Math.pow(Math.random(), 0.62);
+    aVel[i] = 0.55 + Math.pow(Math.random(), 1.7) * 1.15; aSem[i] = Math.random(); aTam[i] = 0.5 + Math.pow(Math.random(), 2.8) * 3.2;
+  }
+  const gp = new THREE.BufferGeometry();
+  gp.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NP * 3), 3));
+  gp.setAttribute('fase', new THREE.BufferAttribute(aFase, 1));
+  gp.setAttribute('ang', new THREE.BufferAttribute(aAng, 1));
+  gp.setAttribute('rfrac', new THREE.BufferAttribute(aRad, 1));
+  gp.setAttribute('vmult', new THREE.BufferAttribute(aVel, 1));
+  gp.setAttribute('semente', new THREE.BufferAttribute(aSem, 1));
+  gp.setAttribute('tam', new THREE.BufferAttribute(aTam, 1));
+  const partMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uTempo: { value: 0 }, uComp: { value: comp }, uR0: { value: r0 }, uRmax: { value: rmax }, uEscala: { value: innerHeight * 0.9 }, uInt: { value: 0 }, uMapa: { value: plumeDot }, uBase: { value: C_BASE.clone() }, uMeio: { value: C_MEIO.clone() }, uPonta: { value: C_PONTA.clone() }, uSat: { value: sat } },
+    vertexShader: PART_VERT, fragmentShader: PART_FRAG,
+  });
+  const pts = new THREE.Points(gp, partMat); pts.frustumCulled = false; group.add(pts);
+  group.visible = false;
+  return { group, veuMats, partMat };
+}
 
 interface PlanetFx {
   group: THREE.Group;
@@ -261,7 +404,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const surfTex = planetTexture(p.key);
     const irMats: THREE.ShaderMaterial[] = [];
     let planetRing: THREE.Mesh | null = null;
-    let planetTail: THREE.Mesh | null = null;
+    let planetPlume: PlumeRt | null = null;
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(surfTex ? 0xffffff : p.color) },
@@ -317,21 +460,13 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     const pivot = new THREE.Group(); // gira em Y -> órbita circular no plano XZ (eclíptica)
     pivot.add(body);
     solar.add(pivot);
-    // cauda cometária p/ os sobreviventes que são castigados (4 gigantes). Fica
-    // no pivot (não gira com o corpo) apontando +X = radialmente p/ longe da estrela.
+    // pluma de ablação p/ os sobreviventes castigados (4 gigantes). Fica no pivot
+    // (não gira com o corpo), na posição do planeta, apontando +X = radialmente p/
+    // longe da estrela (anti-estelar). Invisível até o blast (dirigida por plume).
     if (['jupiter', 'saturno', 'urano', 'netuno'].includes(p.key)) {
-      const h = size * 14;
-      const tailMat = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(1.0, 0.55, 0.35) } }, // gás quente arrancado
-        vertexShader: TAIL_VERT, fragmentShader: TAIL_FRAG,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      });
-      const t = new THREE.Mesh(new THREE.ConeGeometry(size * 1.1, h, 24, 1, true), tailMat);
-      t.rotation.z = Math.PI / 2;   // ápice (estreito/brilhante) no planeta, base p/ fora
-      t.position.x = r + h / 2;      // base alarga p/ longe da origem
-      t.visible = false;
-      pivot.add(t);
-      planetTail = t;
+      planetPlume = createPlume(size);
+      planetPlume.group.position.x = r;
+      pivot.add(planetPlume.group);
     }
     // Destruição por RADIAÇÃO (não pelo choque): só os rochosos têm energia de
     // ligação baixa o suficiente p/ desintegrar. Morrem na chegada da LUZ, em
@@ -339,7 +474,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
     // Vênus 0,60s -> Terra 0,83s -> Marte 1,26s. Gigantes/gelo/Plutão sobrevivem.
     const ROCKY = new Set(['mercurio', 'venus', 'terra', 'marte']);
     const destroyAt = ROCKY.has(p.key) ? 0.83 * p.au : Infinity;
-    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats, ring: planetRing, tail: planetTail });
+    planets.push({ pivot, body, r, omega: ORBIT_SPEED_K / Math.pow(r, 1.5), angle: i * 2.399963, spin: 0.2 + (i % 3) * 0.12, key: p.key, size, pick, destroyAt, dead: false, deadT: 0, fx: null, irMats, ring: planetRing, plume: planetPlume });
   });
 
   return { planets, planetPick };
@@ -347,7 +482,7 @@ export function createPlanets(scene: THREE.Scene): { planets: PlanetRt[]; planet
 
 // Avança as órbitas (kepleriano) e a rotação própria; congela o planeta sob o
 // cursor (planetHover) para leitura estável do card.
-export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0, after = 0, plume = 0) {
+export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: number, blastT = -1, ir = 0, after = 0, plume = 0, t = 0) {
   planets.forEach((p, i) => {
     for (const m of p.irMats) m.uniforms.uIr.value = ir; // tom infravermelho (Petrova)
     if (p.dead) { p.deadT += dt; animateBurst(p); return; } // destruído: só anima o burst
@@ -356,7 +491,16 @@ export function updatePlanets(planets: PlanetRt[], dt: number, planetHover: numb
     // PLUMA de ablação (plume) forte no blast que depois some aos poucos
     (p.body.material as THREE.ShaderMaterial).uniforms.uAfter.value = after;
     if (p.ring) p.ring.visible = after < 0.5; // anéis de gelo sublimam
-    if (p.tail) { p.tail.visible = plume > 0.02; (p.tail.material as THREE.ShaderMaterial).uniforms.uOpacity.value = plume * 0.55; }
+    // pluma: intensidade time-gated (forte no blast, decai a zero). uInt por camada.
+    if (p.plume) {
+      const on = plume > 0.015;
+      p.plume.group.visible = on;
+      if (on) {
+        for (const m of p.plume.veuMats) { m.uniforms.uTempo.value = t; m.uniforms.uInt.value = (m.userData.intBase as number) * plume * 1.7; }
+        p.plume.partMat.uniforms.uTempo.value = t;
+        p.plume.partMat.uniforms.uInt.value = plume * 1.15;
+      }
+    }
     if (i !== planetHover) p.angle += p.omega * dt;
     p.pivot.rotation.y = p.angle;
     p.body.rotation.y += p.spin * dt;
