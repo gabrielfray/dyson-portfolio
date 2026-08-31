@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initDysonScene, type DysonSceneApi, type Section } from './scene/dysonScene';
 import { getContent, PLANETS, SECTIONS, type Lang } from './data/content';
 import { useTerminal } from './hooks/useTerminal';
-import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playContactMotif, playContactWrong, playSupernovaBirth, playCollapseRumble, playRestart } from './audio/sfx';
+import { playAnomalySfx, stopAllSfx, setOnFileEnded, currentSfxKey, playContactTone, playSupernovaBirth, playCollapseRumble, playRestart, playAnomalyPreview } from './audio/sfx';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { LangToggle } from './components/LangToggle';
 import { Console } from './components/Console';
@@ -14,7 +14,6 @@ import { PlanetCard } from './components/PlanetCard';
 import { AnomalyCard } from './components/AnomalyCard';
 import { IntroGate } from './components/IntroGate';
 import { ResetTerminal } from './components/ResetTerminal';
-import { SupernovaHint } from './components/SupernovaHint';
 import { SupernovaCard } from './components/SupernovaCard';
 import * as S from './App.styles';
 
@@ -28,6 +27,11 @@ export default function App() {
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState(false);
   const [mission, setMission] = useState(false);   // 1ª explosão do sol -> missão secreta (puzzle); portfólio FICA
+  const [overheat, setOverheat] = useState(false); // sinal aceito -> meltdown do console durante a supernova
+  const [cinematic, setCinematic] = useState(false); // cena cinematográfica (Hail Mary) -> trava HUD + letterbox
+  const [entered, setEntered] = useState(0);       // acertos em sequência do sinal (0..5), mostrado no console
+  const enteredRef = useRef(0);                    // leitura síncrona p/ a cascata do erro
+  const cascadeRef = useRef<number | null>(null);  // timer da cascata (apaga os pontos R->L)
   const [collapsed, setCollapsed] = useState(false); // supernova (pós-puzzle) -> portfólio some + terminal de reset
   const [simKey, setSimKey] = useState(0); // remontar a cena p/ "reiniciar simulação"
   const [resetting, setResetting] = useState(false); // transição do reinício (bloqueia input)
@@ -47,14 +51,17 @@ export default function App() {
     selRef.current = sel;
   }, [sel]);
   useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
+  useEffect(() => { enteredRef.current = entered; }, [entered]);
+  const clearCascade = useCallback(() => { if (cascadeRef.current) { window.clearInterval(cascadeRef.current); cascadeRef.current = null; } }, []);
 
   // reinicia a simulação: remonta a cena (estado inicial) e limpa o HUD
   const resetSim = useCallback(() => {
     stopAllSfx();
     setSel(null); setHoverPlanet(null); setHoverAnomaly(null); setHoverRing(null);
-    setManual(false); setMission(false); setCollapsed(false); setHoverSun(false);
+    setManual(false); setMission(false); setCollapsed(false); setHoverSun(false); setOverheat(false);
+    clearCascade(); setEntered(0);
     setSimKey((k) => k + 1);
-  }, []);
+  }, [clearCascade]);
 
   // Transição do reinício (cinematográfica, à prova de bug): (1) clarão branco
   // entra + a câmera mergulha na estrela girando; (2) atrás do branco a cena
@@ -75,7 +82,7 @@ export default function App() {
     }, 1000);
   }, [resetSim]);
 
-  const termLines = useTerminal(lang, started);
+  const termLines = useTerminal(lang, started, (mission || overheat) && !collapsed); // congela o console na missão/meltdown
   const pt = lang === 'pt';
   const content = useMemo(() => getContent(lang), [lang]);
 
@@ -110,15 +117,17 @@ export default function App() {
       onPlanetHover: (idx) => setHoverPlanet(idx),
       onAnomalyHover: (key) => setHoverAnomaly(key),
       onAnomalyClick: (key) => {
-        // trocar p/ outro egg encerra a Petrova (forçado); re-clicar o Adrian reinicia
+        // trocar p/ outro egg encerra a Petrova (forçado)
         if (key !== 'hailmary') sceneApiRef.current?.endPetrova();
-        playAnomalySfx(key);
+        if (key !== 'hailmary') playAnomalySfx(key); // Hail Mary: a música toca no REVEAL (infravermelho), não no clique
       },
+      onCinematic: (on) => { setCinematic(on); if (on) { setHoverAnomaly(null); setHoverPlanet(null); setHoverSun(false); } }, // trava o HUD + tira o card da frente
+      onHailmaryReveal: () => playAnomalySfx('hailmary'),    // infravermelho revela -> música no exato momento
       onManual: (m) => setManual(m),
       onDetonate: () => playAnomalySfx('supernova'), // som da explosão, sincronizado à animação
-      onSunDead: () => { setMission(true); window.setTimeout(() => playContactMotif(), 9000); }, // 1ª explosão -> missão secreta + convite (dica), portfólio FICA
-      onSupernova: () => { setMission(false); playCollapseRumble(); playSupernovaBirth(); }, // enigma resolvido -> some a dica + rumble do colapso (14s) + estouro (mp3)
-      onReborn: () => setCollapsed(true),      // gigante azul formada -> portfólio some + terminal
+      onSunDead: () => { setMission(true); setEntered(0); }, // 1ª explosão -> missão secreta; o sinal NÃO é tocado (o jogador tem que conhecer/pesquisar)
+      onSupernova: () => { setOverheat(true); clearCascade(); setEntered(0); playCollapseRumble(); playSupernovaBirth(); }, // sinal aceito -> meltdown do console + rumble + estouro
+      onReborn: () => { setCollapsed(true); setOverheat(false); setMission(false); }, // gigante azul formada -> portfólio some + terminal de reset
       onSunHover: (over) => setHoverSun(over), // card da gigante azul
       onSunTrack: (x, y) => {
         // card do gigante segue a estrela com offset lateral FIXO (sem flip -> não pula/
@@ -130,8 +139,16 @@ export default function App() {
         w.style.transform = `translate(${ox}px, ${y}px)`;
         w.style.opacity = '1';
       },
-      onContactTone: (i) => playContactTone(i),
-      onContactWrong: () => playContactWrong(),
+      onContactTone: (i) => playContactTone(i), // nota da anomalia clicada (no CLIQUE)
+      onContactProgress: (n) => { clearCascade(); setEntered(n); }, // acertos em sequência -> HUD
+      onAnomalyPreview: (i) => playAnomalyPreview(i, Math.floor(Math.random() * 3)), // decoy: nota fora do sinal (no clique)
+      onContactWrong: () => {
+        // a nota já tocou no clique; aqui só a CASCATA (apaga a entrada da direita p/ esquerda)
+        clearCascade();
+        let e = enteredRef.current;
+        if (e <= 0) { setEntered(0); return; }
+        cascadeRef.current = window.setInterval(() => { e -= 1; setEntered(Math.max(0, e)); if (e <= 0) clearCascade(); }, 140);
+      },
 
       onPlanetTrack: (x, y) => {
         const el2 = planetOverlayRef.current;
@@ -171,7 +188,7 @@ export default function App() {
       api.dispose();
       sceneApiRef.current = null;
     };
-  }, [select, simKey]); // simKey muda -> remonta a cena (reiniciar simulação)
+  }, [select, simKey, clearCascade]); // simKey muda -> remonta a cena (reiniciar simulação)
 
   // Fecha o painel com Escape.
   useEffect(() => {
@@ -180,21 +197,22 @@ export default function App() {
       // Atalhos de DEV (apenas `npm run dev`; import.meta.env.DEV vira false no build
       // de produção e este bloco é eliminado). Avançam a simulação p/ testar as fases.
       if (import.meta.env.DEV) {
-        const api = sceneApiRef.current as unknown as { debugReborn?: () => void; debugExplode?: () => void; debugSupernova?: () => void } | null;
+        const api = sceneApiRef.current as unknown as { debugReborn?: () => void; debugExplode?: () => void; debugSupernova?: () => void; debugHailmary?: () => void } | null;
         if (e.key === 'F2') { // pula direto pro terminal de reset (gigante + collapsed)
           e.preventDefault(); api?.debugReborn?.(); setMission(false); setCollapsed(true);
         }
         if (e.key === 'F3') { // dispara a EXPLOSÃO do núcleo do sol (1ª) -> missão
           e.preventDefault(); api?.debugExplode?.();
         }
-        if (e.key === 'F4') { // dispara o NASCIMENTO da gigante azul (supernova) + áudio
-          e.preventDefault(); api?.debugSupernova?.(); setMission(false); playCollapseRumble(); playSupernovaBirth();
+        if (e.key === 'F4') { // dispara o NASCIMENTO da gigante azul (supernova) + meltdown + áudio
+          e.preventDefault(); api?.debugSupernova?.(); setOverheat(true); clearCascade(); playCollapseRumble(); playSupernovaBirth();
         }
+        if (e.key === 'F5') { e.preventDefault(); api?.debugHailmary?.(); } // cena do Hail Mary (linha de Petrova)
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [close]);
+  }, [close, clearCascade]);
 
   // Qualquer clique interrompe o som atual (fase de captura, roda ANTES do
   // clique da cena que toca o som do easter egg). Assim: clicar no objeto toca;
@@ -242,26 +260,25 @@ export default function App() {
         </S.ManualHint>
       )}
 
-      {/* 1ª explosão: missão secreta ativa (puzzle) — portfólio continua normal */}
-      {started && mission && !collapsed && <SupernovaHint lang={lang} />}
-
       {/* supernova (pós-puzzle): portfólio some, aparece o terminal de reset */}
       {started && collapsed && <ResetTerminal lang={lang} onReset={doRestart} />}
 
       {/* HUD do portfólio: fica na 1ª explosão/missão; só some após a supernova */}
       {started && !collapsed && (
         <>
-          <Console lines={termLines} />
+          {!cinematic && <Console lines={termLines} mission={mission} overheat={overheat} entered={entered} lang={lang} />}
 
-          {hasHover && <RingHoverIndicator label={hoverLabel} hint={content.hoverHint} />}
-
-          <RingLegend
-            sections={SECTIONS}
-            lang={lang}
-            sel={sel}
-            width={legendWidth}
-            onSelect={(i) => (sel === i ? close() : select(i))}
-          />
+          {/* nav/legenda do portfólio: fade suave na implosão (overheat) ou na cena (cinematic) */}
+          <S.FadeHud $out={overheat || cinematic}>
+            {hasHover && <RingHoverIndicator label={hoverLabel} hint={content.hoverHint} />}
+            <RingLegend
+              sections={SECTIONS}
+              lang={lang}
+              sel={sel}
+              width={legendWidth}
+              onSelect={(i) => (sel === i ? close() : select(i))}
+            />
+          </S.FadeHud>
         </>
       )}
 
@@ -269,7 +286,7 @@ export default function App() {
         <SectionPanel selId={selId} content={content} lang={lang} panelPath={panelPath} backLabel={content.backLabel} onClose={close} />
       )}
 
-      {(hoverPlanet !== null || hoverAnomaly !== null || hoverSun) && (
+      {(hoverPlanet !== null || hoverAnomaly !== null || hoverSun) && !cinematic && (
         <S.PlanetOverlay ref={planetOverlayRef}>
           <Reticle />
           {hoverAnomaly !== null ? (
@@ -294,6 +311,9 @@ export default function App() {
           onFinished={() => setStarted(true)}
         />
       )}
+
+      {/* barras de cinema durante a cena do Hail Mary */}
+      <S.Letterbox $on={cinematic} />
 
       {/* transição do reinício: esconde o remount e bloqueia toda interação */}
       <S.RestartFlash $on={flash} $block={resetting} />

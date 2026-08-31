@@ -86,7 +86,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   const _fm = new THREE.Matrix4(), _fq = new THREE.Quaternion(), _fp = new THREE.Vector3(), _fsc = new THREE.Vector3();
 
   const { planets, planetPick } = createPlanets(scene);
-  const { anomalies, update: updateAnomalies, trigger: triggerAnomaly } = createAnomalies(scene, camera);
+  const { anomalies, update: updateAnomalies, trigger: triggerAnomaly, setHailmaryCine: setHmCine, hmCam, hmLook, hmWide, hmWideLook, hmUp } = createAnomalies(scene, camera);
   const anomalyPick = anomalies.map((a) => a.pick);
 
   // Campo de astrófagos: só existe no modo IR (astrophage não emite no visível).
@@ -195,6 +195,30 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   // stop "forçado": encerra de fato (fim da música ou troca p/ outro easter egg)
   const endPetrova = () => { irLocked = false; if (irStart >= 0 && irStopAt < 0) irStopAt = clock.getElapsedTime(); };
   const smoothstep = (a: number, b: number, x: number) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+  const smootherstep = (x: number) => { const u = Math.max(0, Math.min(1, x)); return u * u * u * (u * (6 * u - 15) + 10); };
+  const UP_Y = new THREE.Vector3(0, 1, 0);
+  // ---- Cinemática do Hail Mary (linha de Petrova, EVA do Ryland) ----
+  // (1) APROXIMA (a olho nu, sem música) -> (2) INFRAVERMELHO revela o astrophage
+  // (rosa/vermelho por toda parte) + música no exato momento. Input travado.
+  const CINE_APPROACH = 6.0; // s até o reveal · A_END = fim da fase A (planeta) · REVEAL_AT = infravermelho
+  const CINE_A_END = 2.5, CINE_REVEAL_AT = 5.2, CINE_AUTO = 15.0, CINE_OUT = 1.6;
+  let cineActive = false, cineEnding = false, cineT = 0, cineOutT = 0, cineReveal = false;
+  const _cpos = new THREE.Vector3(), _clook = new THREE.Vector3(); // transform corrente do cinematic
+  const cineOutFrom = new THREE.Vector3(), cineOutLook = new THREE.Vector3(); // ponto de partida do retorno
+  const _orbitPos = new THREE.Vector3(), _orbitLook = new THREE.Vector3(); // órbita normal (alvo do retorno)
+  const startHailmaryCine = () => {
+    if (cineActive) return;
+    cineActive = true; cineEnding = false; cineT = 0; cineReveal = false;
+    setHmCine(true);
+    opts.onCinematic?.(true); // trava o HUD/input + letterbox
+  };
+  const endHailmaryCine = () => {
+    if (!cineActive || cineEnding) return;
+    cineEnding = true; cineOutT = 0;         // inicia o RETORNO suave (não solta a câmera seca)
+    cineOutFrom.copy(camera.position); cineOutLook.copy(_clook);
+    setHmCine(false); endPetrova();          // desestaciona a nave + IR faz fade
+    opts.onCinematic?.(false);               // retrai letterbox + volta o HUD
+  };
   // multi-touch: mapa de dedos ativos + estado da pinça (zoom)
   const pointers = new Map<number, { x: number; y: number }>();
   let pinching = false, pinchDist0 = 0, pinchZoom0 = 0;
@@ -234,6 +258,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     }
   };
   const onPointerMovePick = (e: PointerEvent) => {
+    if (cineActive) return; // cinemática do Hail Mary: sem controle de câmera
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinching && pointers.size >= 2) { // pinça (2 dedos) -> zoom
       const p = [...pointers.values()];
@@ -295,7 +320,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         const idx = anomalies.findIndex((a) => a.key === key);
         if (anomalyHover !== idx) {
           anomalyHover = idx;
-          opts.onAnomalyHover?.(key);
+          opts.onAnomalyHover?.(key); // hover só ACENDE o retículo — o som toca no CLIQUE
         }
         setHover(-1);
         renderer.domElement.style.cursor = 'pointer';
@@ -322,6 +347,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   renderer.domElement.addEventListener('pointermove', onPointerMovePick);
 
   const onPointerDown = (e: PointerEvent) => {
+    if (cineActive) return; // cinemática: ignora (o clique sai da cena no onClickPick)
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     downX = e.clientX;
     downY = e.clientY;
@@ -354,6 +380,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   addEventListener('pointercancel', onPointerUp);
 
   const onClickPick = (e: MouseEvent) => {
+    if (cineActive) { endHailmaryCine(); return; } // clique durante a cena -> sai da cinemática
     if (moved) { moved = false; return; } // foi um arraste/pinça, não um clique
     // raycast a partir do ponto clicado (funciona no toque, que não tem hover)
     pointer.x = (e.clientX / innerWidth) * 2 - 1;
@@ -390,18 +417,24 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
       const ah = anomalyPick.length ? raycaster.intersectObjects(anomalyPick, false) : [];
       if (ah.length) {
         const key = ah[0].object.userData.anomalyKey as string;
-        // enigma dos 5 tons: só com o sol morto (antes de renascer). Cada egg toca
-        // seu tom; reproduza o sinal do filme (voyager→oumuamua→monolith→ufo→hailmary).
+        // enigma dos 5 tons: só com o sol morto (antes de renascer). CLICAR uma
+        // anomalia SEMPRE toca a nota dela (é assim que se aprende o mapa dos sons);
+        // a sequência certa é voyager→oumuamua→monolith→ufo→hailmary.
         if (sun.state.dead && !sun.state.reviving && !sun.state.reborn) {
           if (TEST_SKIP_PUZZLE) { contactProgress = 0; sun.revive(); opts.onSupernova?.(); return; } // atalho de teste
           const toneIdx = CONTACT_MAP[key];
-          if (toneIdx === undefined) { opts.onContactWrong?.(); contactProgress = 0; } // decoy -> reinicia
-          else {
-            opts.onContactTone?.(toneIdx);
-            if (toneIdx === contactProgress) {
-              contactProgress++;
+          if (toneIdx === undefined) { // decoy -> toca nota FORA do sinal + erro
+            opts.onAnomalyPreview?.(-1); contactProgress = 0; opts.onContactWrong?.();
+          } else {
+            opts.onContactTone?.(toneIdx); // SEMPRE toca a nota da anomalia clicada
+            if (toneIdx === contactProgress) { // certo -> avança
+              contactProgress++; opts.onContactProgress?.(contactProgress);
               if (contactProgress >= 5) { contactProgress = 0; sun.revive(); opts.onSupernova?.(); }
-            } else contactProgress = toneIdx === 0 ? 1 : 0; // fora de ordem -> recomeça (0 já reinicia a frase)
+            } else if (toneIdx === 0) { // clicou a 1ª nota -> reinicia a frase (sem penalidade)
+              contactProgress = 1; opts.onContactProgress?.(1);
+            } else { // fora de ordem -> erro (a nota já tocou; a cascata avisa)
+              contactProgress = 0; opts.onContactWrong?.();
+            }
           }
           return; // durante o enigma o clique não abre card nem toca o som normal do egg
         }
@@ -410,7 +443,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
         if (anomalyHover !== idx) { anomalyHover = idx; opts.onAnomalyHover?.(key); }
         opts.onAnomalyClick?.(key);
         triggerAnomaly(key); // efeito de cena (ex.: linha de Petrova do Hail Mary)
-        if (key === 'hailmary') startPetrova(); // liga o modo IR (véus + Petrova)
+        if (key === 'hailmary') startHailmaryCine(); // cena cinematográfica: aproxima -> infravermelho + música
         return;
       }
       // anel -> abre a seção
@@ -452,6 +485,7 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
   };
   addEventListener('pointermove', onPointerMoveParallax);
   const onWheel = (e: WheelEvent) => {
+    if (cineActive) return; // cinemática: sem zoom
     if (lockedIdx >= 0) return; // painel aberto: wheel rola o painel
     // zoom-in limitado (evita o bloom do sol estourar de perto); zoom-out bem amplo
     // p/ afastar até a borda e caçar os easter eggs (ficam a ~1400-1550 unid.)
@@ -580,6 +614,39 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     const phi = Math.max(0.25, Math.min(2.75, 1.35 + (manual ? manualPhi : sy * 0.2)));
     camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(0, scrollP * -6, 0);
+    _orbitPos.copy(camera.position); _orbitLook.set(0, scrollP * -6, 0); // órbita normal (alvo do retorno)
+    // ---- Cinemática do Hail Mary: sobrescreve a câmera ----
+    if (cineActive) {
+      if (cineEnding) {
+        // RETORNO suave: volta p/ a órbita atual e destrava o horizonte
+        cineOutT += dt;
+        const e = smoothstep(0, CINE_OUT, cineOutT);
+        _cpos.copy(cineOutFrom).lerp(_orbitPos, e);
+        _clook.copy(cineOutLook).lerp(_orbitLook, e);
+        camera.up.lerp(UP_Y, Math.min(1, dt * 4));
+        camera.position.copy(_cpos); camera.lookAt(_clook);
+        if (cineOutT >= CINE_OUT) { cineActive = false; cineEnding = false; camera.up.set(0, 1, 0); }
+      } else {
+        cineT += dt;
+        // FASE A (planeta gigante) -> varredura -> FASE B (astronauta / linha de Petrova)
+        if (cineT < CINE_A_END) {
+          const e = smootherstep(cineT / CINE_A_END);
+          _cpos.copy(_orbitPos).lerp(hmWide, e);
+          _clook.copy(_orbitLook).lerp(hmWideLook, e);
+        } else {
+          const e = smootherstep((cineT - CINE_A_END) / (CINE_APPROACH - CINE_A_END));
+          _cpos.copy(hmWide).lerp(hmCam, e);
+          _clook.copy(hmWideLook).lerp(hmLook, e);
+          camera.up.lerp(hmUp, Math.min(1, dt * 2)); // trava o horizonte gradual na fase B
+        }
+        const drift = cineReveal ? Math.sin(cineT * 0.3) * 0.8 : 0; // respiração leve após o reveal
+        camera.position.copy(_cpos); camera.position.addScaledVector(UP_Y, drift);
+        camera.lookAt(_clook);
+        // REVEAL: liga o infravermelho (astrophage magenta) + música no exato momento
+        if (!cineReveal && cineT >= CINE_REVEAL_AT) { cineReveal = true; startPetrova(); opts.onHailmaryReveal?.(); }
+        if (cineT >= CINE_AUTO) endHailmaryCine(); // auto-encerra (não trava p/ sempre)
+      }
+    }
     // supernova: pico de bloom/exposição no flash + tremor de câmera
     const sState = sun.state;
     // drain = escurece tudo brevemente (troca de detector); ir = leve dim sustentado
@@ -601,8 +668,9 @@ export function initDysonScene(container: HTMLElement, opts: DysonSceneOptions =
     setFocus(f: number) { targetFocus = f; },
     startIntro() { introActive = true; },
     debugReborn() { sun.state.exploding = false; sun.state.reviving = false; sun.state.dead = false; sun.state.reborn = true; }, // dev (F2): pula pro gigante/terminal
-    debugExplode() { sun.detonate(); }, // dev (F3): dispara a explosão do núcleo do sol (1ª)
+    debugExplode() { if (sun.state.exploding || sun.state.reviving || sun.state.reborn) return; sun.detonate(); opts.onDetonate?.(); }, // dev (F3): evento COMPLETO da 1ª explosão (como os 100 cliques) — trilha inclusa
     debugSupernova() { sun.state.dead = true; sun.revive(); }, // dev (F4): dispara o nascimento da gigante azul
+    debugHailmary() { startHailmaryCine(); }, // dev (F5): dispara a cena cinematográfica do Hail Mary
     // reiniciar — fase 1 (cena atual): mergulha na estrela girando (atrás do clarão)
     approachStar() { approaching = true; introActive = false; restartSpin = 0.8; },
     // reiniciar — fase 2 (cena nova): começa colado na estrela e recua girando até normal

@@ -124,10 +124,16 @@ const addPick = (body: THREE.Object3D, key: string, radius: number) => {
 
 // Objetos especiais / easter eggs espalhados bem longe (achados no zoom out).
 // Cada um: um corpo visual + uma esfera de hit invisível p/ o raycast.
-export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { anomalies: Anomaly[]; update: (t: number, zoom?: number, ir?: number) => void; trigger: (key: string) => void } {
+export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { anomalies: Anomaly[]; update: (t: number, zoom?: number, ir?: number) => void; trigger: (key: string) => void; setHailmaryCine: (on: boolean) => void; hmCam: THREE.Vector3; hmLook: THREE.Vector3; hmWide: THREE.Vector3; hmWideLook: THREE.Vector3; hmUp: THREE.Vector3 } {
   const anomalies: Anomaly[] = [];
   const updaters: ((t: number, zoom: number, ir: number) => void)[] = [];
   const triggers: Record<string, () => void> = {}; // efeitos acionados por clique (ex.: Petrova)
+  // Cinemática do Hail Mary: nave estaciona na linha de Petrova + alvos da câmera.
+  const UP = new THREE.Vector3(0, 1, 0);
+  let hmCine = false;
+  const hmCam = new THREE.Vector3(), hmLook = new THREE.Vector3();       // fase B (over-the-shoulder)
+  const hmWide = new THREE.Vector3(), hmWideLook = new THREE.Vector3();  // fase A (wide no planeta)
+  const hmUp = new THREE.Vector3(0, 1, 0);                                // "cima" p/ travar o horizonte na fase B
 
   // --- Objeto não identificado: pequeno, escuro e discreto, bem escondido ---
   {
@@ -443,7 +449,7 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     const g = new THREE.Group();
     g.position.set(-900, 560, -1000); // bem longe, num canto (r ~ 1460)
 
-    const PR = 15;
+    const PR = 48;
     const adrianMap = adrianTexture();
     const planetMat = new THREE.ShaderMaterial({
       uniforms: { uMap: { value: adrianMap }, uLightPos: { value: new THREE.Vector3() }, uOpacity: { value: 1 }, uIr: { value: 0 } },
@@ -452,7 +458,7 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     const planet = new THREE.Mesh(new THREE.SphereGeometry(PR, 96, 64), planetMat);
     g.add(planet);
     // halo externo suave (sem o anel neon — só um brilho leve na borda)
-    const atmoMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(150,255,110,0.28)', 'rgba(80,200,80,0.05)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const atmoMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(90,220,210,0.28)', 'rgba(60,180,190,0.05)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const atmo = new THREE.Sprite(atmoMat);
     atmo.scale.setScalar(PR * 3);
     g.add(atmo);
@@ -507,6 +513,23 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
       panel.position.set(0.6, 0, sgn * 2.9);
       ship.add(panel);
     }
+
+    // Astronauta (o "Ryan de costa") em pé no topo da nave, olhando p/ fora — na
+    // cena cinematográfica ele fica em silhueta contra a linha de Petrova.
+    const suitMat = new THREE.MeshStandardMaterial({ color: 0x15161a, metalness: 0.25, roughness: 0.85, emissive: 0x090a0c, emissiveIntensity: 0.5, transparent: true });
+    const visorMat = new THREE.MeshStandardMaterial({ color: 0x0a1016, metalness: 0.7, roughness: 0.18, emissive: 0x0c1420, emissiveIntensity: 0.7, transparent: true });
+    const astro = new THREE.Group();
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.55, 5, 10), suitMat); torso.position.y = 0.98; astro.add(torso);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 14), suitMat); head.position.y = 1.62; astro.add(head);
+    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), visorMat); visor.position.set(0.16, 1.63, 0); visor.scale.set(0.55, 0.85, 0.85); astro.add(visor);
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.66, 0.3), suitMat); pack.position.set(-0.36, 1.02, 0); astro.add(pack);
+    for (const s of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.55, 4, 8), suitMat); leg.position.set(0, 0.33, s * 0.17); astro.add(leg);
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.5, 4, 8), suitMat); arm.position.set(0.04, 1.0, s * 0.42); arm.rotation.x = -s * 0.12; astro.add(arm);
+    }
+    astro.position.set(4.4, 1.25, 0); astro.scale.setScalar(1.8); // topo da nave; +Y = de pé (maior p/ virar herói-silhueta apesar da nave ×0.5)
+    ship.add(astro);
+    ship.scale.setScalar(0.5); // nave menor (fidelidade de escala: planeta enorme, nave pequena)
     g.add(ship);
 
     // estrela Tau Ceti (ponto brilhante ao lado, no espaço local do egg)
@@ -514,14 +537,14 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     const starMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,224,224,0.95)', 'rgba(255,90,120,0.35)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const star = new THREE.Sprite(starMat);
     star.position.copy(starPos);
-    star.scale.setScalar(30);
+    star.scale.setScalar(20);
     g.add(star);
     // o shader do Adrian é iluminado por Tau Ceti (posição de mundo da estrela)
     planetMat.uniforms.uLightPos.value.copy(g.position).add(starPos);
-    const fadeMats = [atmoMat, shipMat, dishMat, goldMat, starMat]; // .opacity (planeta/anel usam uOpacity)
+    const fadeMats = [atmoMat, shipMat, dishMat, goldMat, starMat, suitMat, visorMat]; // .opacity (planeta/anel usam uOpacity)
 
     scene.add(g);
-    const pick = addPick(g, 'hailmary', 30);
+    const pick = addPick(g, 'hailmary', 56);
     anomalies.push({ key: 'hailmary', body: g, pick });
 
     // ===== Linha de Petrova (4 camadas): espinha LUT + partículas + fitas =====
@@ -608,8 +631,8 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     let vis = 0;
     updaters.push((t, _zoom = 0, ir = 0) => {
       // só surge no zoom out avançado (fade suave); some ao dar zoom in
-      const target = Math.min(1, Math.max(0, (_zoom - 760) / 340)); // só surge no zoom out avançado
-      vis += (target - vis) * 0.08; // fade suave
+      const target = hmCine ? 1 : Math.min(1, Math.max(0, (_zoom - 760) / 340)); // cine força visível
+      vis += (target - vis) * (hmCine ? 0.12 : 0.08); // fade suave
       g.visible = vis > 0.01;
       g.scale.setScalar(0.7 + 0.3 * vis); // surge com um leve "crescer"
       for (const m of fadeMats) m.opacity = vis;
@@ -619,9 +642,30 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
       if (!g.visible) return;
 
       planet.rotation.y = t * 0.15;
-      const oa = t * 0.6;
-      ship.position.set(Math.cos(oa) * 28, Math.sin(oa * 0.7) * 7, Math.sin(oa) * 28);
-      ship.rotation.y = -oa;
+      if (hmCine) {
+        // NAVE ESTACIONADA no MEIO da linha de Petrova (longe do planeta), com o
+        // eixo apontando p/ a estrela e o astronauta em pé no topo (olhando p/ fora).
+        const dirStar = starPos.clone().normalize();
+        ship.position.copy(starPos).multiplyScalar(0.4); // estaciona na linha (mais perto do planeta)
+        const xA = dirStar.clone();                                   // frente da nave (+X) -> estrela
+        const zA = new THREE.Vector3().crossVectors(xA, UP).normalize();
+        const yA = new THREE.Vector3().crossVectors(zA, xA).normalize(); // "cima" da nave
+        ship.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA));
+        const shipWorld = g.position.clone().add(ship.position);
+        const S = 0.5; // nave está em ship.scale 0.5 -> offsets do astronauta em mundo
+        const astroWorld = shipWorld.clone().addScaledVector(xA, 4.4 * S).addScaledVector(yA, 2.23 * S); // torso do astronauta
+        // FASE A — wide no PLANETA gigante (grandiosidade): olha p/ Adrian, nave é um risco pequeno
+        hmWide.copy(shipWorld).addScaledVector(zA, 42).addScaledVector(yA, 12).addScaledVector(xA, -6);
+        hmWideLook.copy(g.position);
+        // FASE B — over-the-shoulder do astronauta olhando p/ a estrela/linha (money shot)
+        hmCam.copy(astroWorld).addScaledVector(xA, -5).addScaledVector(yA, 1.8).addScaledVector(zA, 1.6);
+        hmLook.copy(astroWorld).addScaledVector(xA, 26).addScaledVector(yA, 3);
+        hmUp.copy(yA);
+      } else {
+        const oa = t * 0.6;
+        ship.position.set(Math.cos(oa) * 28, Math.sin(oa * 0.7) * 7, Math.sin(oa) * 28);
+        ship.rotation.set(0, -oa, 0);
+      }
 
       const on = ir > 0.02; // linha de Petrova existe enquanto o modo IR estiver ativo
       for (const rb of ribbons) rb.mesh.visible = on;
@@ -641,5 +685,9 @@ export function createAnomalies(scene: THREE.Scene, camera: THREE.Camera): { ano
     anomalies,
     update: (t, zoom = 0, ir = 0) => updaters.forEach((u) => u(t, zoom, ir)),
     trigger: (key) => triggers[key]?.(),
+    // cinemática do Hail Mary: liga/desliga o estacionamento da nave; hmCam/hmLook
+    // (refs de mundo) são atualizados a cada frame p/ a câmera enquadrar a cena.
+    setHailmaryCine: (on: boolean) => { hmCine = on; },
+    hmCam, hmLook, hmWide, hmWideLook, hmUp,
   };
 }

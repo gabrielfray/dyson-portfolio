@@ -24,7 +24,11 @@ export interface DysonSceneOptions {
   onSunHover?: (over: boolean) => void; // hover na gigante azul (supernova) -> card
   onSunTrack?: (x: number, y: number) => void; // posição do gigante na tela -> card segue
   onContactTone?: (toneIndex: number) => void; // tom de um egg clicado (0..4)
-  onContactWrong?: () => void; // clique fora da sequência -> reinicia
+  onContactWrong?: () => void; // clique fora da sequência -> erro (reinicia)
+  onContactProgress?: (n: number) => void; // acertos em sequência (0..5) p/ o HUD
+  onAnomalyPreview?: (toneIndex: number) => void; // hover na missão: preview do tom (-1 = decoy)
+  onCinematic?: (on: boolean) => void; // cena cinematográfica (Hail Mary) ligada/desligada -> trava HUD
+  onHailmaryReveal?: () => void; // infravermelho revela o astrophage -> toca a música (no exato momento)
   onContactSolved?: () => void; // sequência completa -> renascimento
 }
 
@@ -37,6 +41,7 @@ export interface DysonSceneApi {
   debugReborn?: () => void; // dev (F2): força o estado de gigante azul (só usado em import.meta.env.DEV)
   debugExplode?: () => void; // dev (F3): dispara a explosão do núcleo do sol (1ª)
   debugSupernova?: () => void; // dev (F4): dispara o nascimento da gigante azul
+  debugHailmary?: () => void; // dev (F5): dispara a cena cinematográfica do Hail Mary
   approachStar: () => void; // reiniciar (fase 1): mergulha na estrela girando
   startRestartIntro: () => void; // reiniciar (fase 2): recua girando até a rotação normal
   stopPetrova: () => void; // stop "leve": ignorado enquanto o evento está travado (roda até o fim)

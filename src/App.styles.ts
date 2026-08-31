@@ -76,6 +76,31 @@ export const SunCardWrap = styled.div`
   will-change: transform;
 `;
 
+// HUD do portfólio (nav/legenda): some com FADE suave quando começa a implosão
+// da supernova (overheat) — em vez de sumir de repente lá no fim.
+export const FadeHud = styled.div<{ $out: boolean }>`
+  opacity: ${(p) => (p.$out ? 0 : 1)};
+  transition: opacity 2.2s ease;
+  pointer-events: ${(p) => (p.$out ? 'none' : 'auto')};
+`;
+
+// Letterbox (barras pretas de cinema) da cena cinematográfica do Hail Mary.
+export const Letterbox = styled.div<{ $on: boolean }>`
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  &::before, &::after {
+    content: '';
+    position: absolute; left: 0; right: 0;
+    height: ${(p) => (p.$on ? '11vh' : '0')};
+    background: #000;
+    transition: height 1.1s ease;
+  }
+  &::before { top: 0; }
+  &::after { bottom: 0; }
+`;
+
 // Clarão da transição de reinício: entra por cima de tudo (esconde o remount) e
 // bloqueia toda interação enquanto $block. Tom azul-branco (o núcleo da estrela).
 export const RestartFlash = styled.div<{ $on: boolean; $block: boolean }>`

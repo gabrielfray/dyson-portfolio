@@ -104,11 +104,11 @@ function stopUfo(): void {
   ufoMaster = null;
 }
 
-// --- Enigma "Contatos Imediatos" — síntese subtrativa fiel (5 tons) ---
-// Intervalos em semitons a partir da 1ª nota: 0 +2 -2 -14 -7 (graus 2-3-1-1(8vb)-5).
-// Raiz em fá maior = 392.0 (Sol/G4) -> Sol Lá Fá Fá(8vb) Dó.
+// --- Enigma do sinal — 5 tons do espaço profundo (síntese subtrativa) ---
+// Contorno inspirado no motivo de 5 notas de ficção, mas com o 1º intervalo
+// ALTERADO (+2 -> +3): mantém a "sensação" sem citar a obra de forma direta.
 const CONTACT_ROOT = 392.0;
-const CONTACT_SEMI = [0, 2, -2, -14, -7];
+const CONTACT_SEMI = [0, 3, -2, -14, -7];
 const CONTACT_FREQS = CONTACT_SEMI.map((s) => CONTACT_ROOT * Math.pow(2, s / 12));
 const CONTACT_BRIGHT = 2600; // Hz — brilho do passa-baixas
 const CONTACT_STEP = 0.56;   // s por nota (andamento)
@@ -169,9 +169,21 @@ function contactNote(ac: AudioContext, freq: number, when: number, dur: number, 
 export function playContactTone(i: number): void {
   const ac = getCtx(); contactNote(ac, CONTACT_FREQS[((i % 5) + 5) % 5], ac.currentTime + 0.02, CONTACT_STEP * 0.86, CONTACT_BRIGHT);
 }
-// clique errado: nota grave curta (reinicia a sequência)
+// PREVIEW no hover: toca o tom da anomalia (mais curto/suave), SEM contar jogada.
+// toneIdx 0..4 = uma das notas do sinal; -1 = decoy -> nota FORA do sinal (quem
+// conhece o motivo percebe que ela não pertence à sequência).
+export function playAnomalyPreview(toneIdx: number, seed = 0): void {
+  const ac = getCtx();
+  const freq = toneIdx >= 0
+    ? CONTACT_FREQS[((toneIdx % 5) + 5) % 5]
+    : CONTACT_ROOT * Math.pow(2, [5, -5, 8][seed % 3] / 12); // nota que não está no sinal
+  contactNote(ac, freq, ac.currentTime + 0.02, CONTACT_STEP * 0.5, CONTACT_BRIGHT * 0.85);
+}
+// clique errado: acorde grave DISSONANTE (duas notas a um trítono) — o "não".
 export function playContactWrong(): void {
-  const ac = getCtx(); contactNote(ac, 110, ac.currentTime + 0.02, 0.3, 1200);
+  const ac = getCtx(); const t = ac.currentTime + 0.02;
+  contactNote(ac, 96, t, 0.5, 900);       // grave
+  contactNote(ac, 96 * Math.pow(2, 6 / 12), t, 0.5, 900); // + trítono (dissonância)
 }
 
 // Sons "cinemáticos" de arquivo tocados em elementos próprios: tocam inteiros,
